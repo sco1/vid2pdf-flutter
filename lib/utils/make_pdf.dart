@@ -17,7 +17,7 @@ Future<void> frames2pdf(String sourceDir, String outFile) async {
       pw.Page(
         pageFormat: PdfPageFormat.a4.landscape,
         orientation: pw.PageOrientation.landscape,
-        margin: pw.EdgeInsets.all(4),
+        margin: pw.EdgeInsets.all(0),
         build: (pw.Context ctx) {
           return pw.Center(child: pw.Image(img));
         },

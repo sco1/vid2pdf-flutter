@@ -2,9 +2,37 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:ffmpeg_cli/ffmpeg_cli.dart';
-import 'package:path/path.dart' as p;
 
-final baseContext = p.Context(style: p.Style.posix);
+import 'package:vid2pdf/main.dart';
+
+enum TimeFormat {
+  timestamp,
+  totalSeconds;
+
+  String get description {
+    switch (this) {
+      case TimeFormat.timestamp:
+        return '[HH:]MM:SS[.m...]';
+      case TimeFormat.totalSeconds:
+        return 'S[.m...]';
+    }
+  }
+}
+
+String resolveFfmpeg(String baseDir) {
+  switch (Platform.operatingSystem) {
+    case 'windows':
+      return baseContext.join(baseDir, 'bin', 'ffmpeg.exe');
+    case 'macos':
+      // TODO: Find macos path
+      throw UnimplementedError();
+    case 'linux':
+      // TODO: Find macos path
+      throw UnimplementedError();
+    default:
+      throw UnimplementedError('Unsupported platform.');
+  }
+}
 
 /// Use ffmpeg to extract PNG frames from the provided source video file.
 ///
