@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'package:vid2pdf/main.dart';
 import 'package:vid2pdf/utils/ffmpeg.dart';
+import 'package:vid2pdf/utils/filter_files.dart';
 import 'package:vid2pdf/utils/make_pdf.dart';
 import 'package:vid2pdf/widgets/drop_target.dart';
 
@@ -153,7 +154,11 @@ class _MainUIState extends State<MainUI> {
                 ],
               ),
               Row(
-                children: [Expanded(child: SingleFileDropTarget(onFileDrop: _onFileDrop))],
+                children: [
+                  Expanded(
+                    child: SingleFileDropTarget(onFileDrop: _onFileDrop, fileFilter: isVideo),
+                  ),
+                ],
               ),
               Row(
                 children: [

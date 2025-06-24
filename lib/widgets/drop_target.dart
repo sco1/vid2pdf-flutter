@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 
+import 'package:vid2pdf/widgets/simple_alert.dart';
+
 class SingleFileDropTarget extends StatefulWidget {
-  const SingleFileDropTarget({super.key, this.onFileDrop});
+  const SingleFileDropTarget({super.key, this.onFileDrop, this.fileFilter});
 
   final void Function(String)? onFileDrop;
+  final bool Function(String)? fileFilter;
 
   @override
   State<SingleFileDropTarget> createState() => _SingleFileDropTargetState();
@@ -34,19 +37,29 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
         if (d.files.length > 1) {
           showDialog(
             context: context,
-            builder: (ctx) => AlertDialog(
-              content: Text('Multi-file drag is not supported', textAlign: TextAlign.center),
-              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Sorry'))],
-            ),
+            builder: (ctx) =>
+                simpleAlert(context, 'Multi-file drag is not supported', actionMsg: 'Sorry'),
           );
         } else {
-          // TODO: Validate this is a video file?
+          final String droppedFile = d.files[0].path;
+
+          if (widget.fileFilter != null) {
+            final bool filterResult = widget.fileFilter!(droppedFile);
+            if (!filterResult) {
+              showDialog(
+                context: context,
+                builder: (ctx) => simpleAlert(context, 'File does not appear to be a video'),
+              );
+              return;
+            }
+          }
+
           setState(() {
-            sourceFile = d.files[0].path;
+            sourceFile = droppedFile;
           });
 
           if (widget.onFileDrop != null) {
-            widget.onFileDrop!(sourceFile!);
+            widget.onFileDrop!(droppedFile);
           }
         }
       },
