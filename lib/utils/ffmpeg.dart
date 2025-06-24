@@ -27,7 +27,7 @@ String resolveFfmpeg(String baseDir) {
       // TODO: Find macos path
       throw UnimplementedError();
     case 'linux':
-      // TODO: Find macos path
+      // TODO: Find linux path
       throw UnimplementedError();
     default:
       throw UnimplementedError('Unsupported platform.');

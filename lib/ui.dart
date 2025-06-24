@@ -8,6 +8,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:vid2pdf/main.dart';
 import 'package:vid2pdf/utils/ffmpeg.dart';
 import 'package:vid2pdf/utils/make_pdf.dart';
+import 'package:vid2pdf/widgets/drop_target.dart';
 
 /// Attempt to locate FFmpeg's base directory as defined by an environment variable.
 ///
@@ -34,17 +35,16 @@ class MainUI extends StatefulWidget {
   const MainUI({super.key});
 
   @override
-  State<MainUI> createState() {
-    return _MainUIState();
-  }
+  State<MainUI> createState() => _MainUIState();
 }
 
 class _MainUIState extends State<MainUI> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _ffmpegPathController = TextEditingController();
-  final TextEditingController _sourcePathController = TextEditingController();
   final TextEditingController _startTimeController = TextEditingController();
   final TextEditingController _endTimeController = TextEditingController();
+
+  String? _sourcePath;
 
   TimeFormat _selectedTimeFormat = TimeFormat.timestamp;
 
@@ -85,7 +85,7 @@ class _MainUIState extends State<MainUI> {
       _pipelineResult =
           _pdfPipeline(
                 ffmpegPath: resolveFfmpeg(_ffmpegPathController.text),
-                sourcePath: _sourcePathController.text,
+                sourcePath: _sourcePath!,
                 startTime: _startTimeController.text,
                 endTime: _endTimeController.text,
               )
@@ -101,6 +101,12 @@ class _MainUIState extends State<MainUI> {
                 });
                 throw e;
               });
+    });
+  }
+
+  void _onFileDrop(String newFilePath) {
+    setState(() {
+      _sourcePath = newFilePath;
     });
   }
 
@@ -147,29 +153,7 @@ class _MainUIState extends State<MainUI> {
                 ],
               ),
               Row(
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      FilePickerResult? r = await FilePicker.platform.pickFiles(
-                        dialogTitle: 'Select Source Video',
-                        type: FileType.video,
-                      );
-
-                      if (r != null) {
-                        _sourcePathController.text = r.files.single.path!;
-                      }
-                    },
-                    child: Text('Select Video'),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _sourcePathController,
-                      readOnly: true,
-                      decoration: InputDecoration(labelText: 'Video Path'), // TODO: Drag & drop?
-                    ),
-                  ),
-                ],
+                children: [Expanded(child: SingleFileDropTarget(onFileDrop: _onFileDrop))],
               ),
               Row(
                 children: [
