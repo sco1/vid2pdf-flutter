@@ -10,6 +10,7 @@ import 'package:vid2pdf/utils/ffmpeg.dart';
 import 'package:vid2pdf/utils/filter_files.dart';
 import 'package:vid2pdf/utils/make_pdf.dart';
 import 'package:vid2pdf/widgets/drop_target.dart';
+import 'package:vid2pdf/widgets/simple_alert.dart';
 
 /// Attempt to locate FFmpeg's base directory as defined by an environment variable.
 ///
@@ -47,8 +48,6 @@ class _MainUIState extends State<MainUI> {
 
   String? _sourcePath;
 
-  TimeFormat _selectedTimeFormat = TimeFormat.timestamp;
-
   Future<bool>? _pipelineResult;
   bool _isPipelineRunning = false;
 
@@ -78,7 +77,9 @@ class _MainUIState extends State<MainUI> {
   }
 
   void _runPipeline() {
-    // TODO: Validate inputs
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
     // Disable additional pipeline invocation while one is still running
     setState(() {
@@ -115,7 +116,8 @@ class _MainUIState extends State<MainUI> {
   void initState() {
     super.initState();
 
-    _ffmpegPathController.text = _ffmpegPathFromEnv();
+    final String ffmpegEnv = _ffmpegPathFromEnv();
+    _ffmpegPathController.text = (ffmpegEnv.isEmpty) ? 'ffmpeg' : ffmpegEnv;
   }
 
   @override
@@ -147,8 +149,15 @@ class _MainUIState extends State<MainUI> {
                   Expanded(
                     child: TextFormField(
                       controller: _ffmpegPathController,
-                      readOnly: true,
-                      decoration: InputDecoration(labelText: 'FFmpeg Base Dir'),
+                      decoration: InputDecoration(
+                        labelText: "FFmpeg Base Dir (use 'ffmpeg' if in path)",
+                      ),
+                      validator: (val) {
+                        if (val == null || val.isEmpty) {
+                          return 'Enter value.';
+                        }
+                        return null;
+                      },
                     ),
                   ),
                 ],
@@ -162,33 +171,28 @@ class _MainUIState extends State<MainUI> {
               ),
               Row(
                 children: [
-                  Flexible(
-                    fit: FlexFit.tight,
-                    child: DropdownButtonFormField(
-                      value: _selectedTimeFormat,
-                      items: TimeFormat.values
-                          .map((f) => DropdownMenuItem(value: f, child: Text(f.description)))
-                          .toList(),
-                      onChanged: (f) {
-                        setState(() {
-                          _selectedTimeFormat = f!;
-                        });
-                      },
-                    ),
-                  ),
-                  SizedBox(width: 12),
                   Expanded(
                     child: TextFormField(
                       controller: _startTimeController,
-                      decoration: InputDecoration(labelText: 'Start Time'),
+                      decoration: InputDecoration(labelText: 'Start (blank for start)'),
                     ),
                   ),
                   SizedBox(width: 12),
                   Expanded(
                     child: TextFormField(
                       controller: _endTimeController,
-                      decoration: InputDecoration(labelText: 'End Time'),
+                      decoration: InputDecoration(labelText: 'End (blank for end)'),
                     ),
+                  ),
+                  SizedBox(width: 12),
+                  IconButton(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => simpleWidgetAlert(ctx, timeSpec),
+                      );
+                    },
+                    icon: Icon(Icons.help_outline),
                   ),
                 ],
               ),
@@ -196,7 +200,7 @@ class _MainUIState extends State<MainUI> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton(
-                    onPressed: _isPipelineRunning ? null : _runPipeline,
+                    onPressed: (_isPipelineRunning || _sourcePath == null) ? null : _runPipeline,
                     child: Text('Generate PDF'),
                   ),
                 ],

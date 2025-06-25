@@ -1,24 +1,36 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+
 import 'package:ffmpeg_cli/ffmpeg_cli.dart';
 
 import 'package:vid2pdf/main.dart';
 
-enum TimeFormat {
-  timestamp,
-  totalSeconds;
+const Column timeSpec = Column(
+  mainAxisSize: MainAxisSize.min,
+  children: [
+    Text(
+      'Timestamp Specification Format',
+      textAlign: TextAlign.center,
+      style: TextStyle(fontWeight: FontWeight.bold),
+    ),
+    SizedBox(height: 16),
+    Text('''\
+    FFmpeg supports two types of syntax for expressing time duration:
 
-  String get description {
-    switch (this) {
-      case TimeFormat.timestamp:
-        return '[HH:]MM:SS[.m...]';
-      case TimeFormat.totalSeconds:
-        return 'S[.m...]';
-    }
-  }
-}
+    * [HH:]MM:SS[.m...]
+    * S+[.m...][s|ms|us]
 
+    For example, to specify 1 minute & 5 seconds, you can use 01:05.5 or 65.5
+    '''),
+  ],
+);
+
+/// Resolve the location of the FFmpeg binary relative to the provided base directory.
+///
+/// The FFmpeg binary location is assumed to be in a fixed location per operating system, e.g. for
+/// Windows the binary is located at `baseDir/bin/ffmpeg.exe`.
 String resolveFfmpeg(String baseDir) {
   switch (Platform.operatingSystem) {
     case 'windows':
@@ -39,10 +51,10 @@ String resolveFfmpeg(String baseDir) {
 /// [outDir] must be a path to an existing directory. Note that any existing frames will be
 /// overwritten on name collision.
 ///
-/// [ffmpegPath] may be optionally specified as the path to the ffmpeg binary on the current system,
+/// [ffmpegPath] may be optionally specified as the path to the FFmpeg binary on the current system,
 /// otherwise it is assumed that ffmpeg is in your system path.
 ///
-/// [start] and [end] can be optionally specified according to ffmpeg's
+/// [start] and [end] can be optionally specified according to FFmpeg's
 /// [time duration specification syntax](https://www.ffmpeg.org/ffmpeg-utils.html#time-duration-syntax).
 /// If not specified, the start and end of the source video, respectively, are used.
 Future<int> extractFrames({
