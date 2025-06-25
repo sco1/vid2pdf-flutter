@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 
+import 'package:vid2pdf/main.dart';
 import 'package:vid2pdf/widgets/simple_alert.dart';
 
 class SingleFileDropTarget extends StatefulWidget {
@@ -38,7 +39,7 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
           showDialog(
             context: context,
             builder: (ctx) =>
-                simpleAlert(context, 'Multi-file drag is not supported', actionMsg: 'Sorry'),
+                simpleAlert(ctx, 'Multi-file drag is not supported', actionMsg: 'Sorry'),
           );
         } else {
           final String droppedFile = d.files[0].path;
@@ -48,7 +49,7 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
             if (!filterResult) {
               showDialog(
                 context: context,
-                builder: (ctx) => simpleAlert(context, 'File does not appear to be a video'),
+                builder: (ctx) => simpleAlert(context, 'This does not appear to be a video'),
               );
               return;
             }
@@ -85,7 +86,9 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
           ),
           child: Center(
             child: Text(
-              (sourceFile == null) ? 'Drop source video here, or click to browse' : sourceFile!,
+              (sourceFile == null)
+                  ? 'Drop source video here, or click to browse'
+                  : baseContext.basename(sourceFile!),
             ),
           ),
         ),
