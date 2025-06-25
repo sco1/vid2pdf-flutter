@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:ffmpeg_cli/ffmpeg_cli.dart';
 
 import 'package:vid2pdf/main.dart';
+
+enum FrameFormat {
+  png('PNG', '.png'),
+  jpeg('JPEG', '.jpg');
+
+  const FrameFormat(this.name, this.extension);
+  final String name;
+  final String extension;
+
+  static final List<DropdownMenuEntry<FrameFormat>> asMenuEntries = values
+      .map((FrameFormat fmt) => DropdownMenuEntry(value: fmt, label: fmt.name))
+      .toList();
+}
 
 const Column timeSpec = Column(
   mainAxisSize: MainAxisSize.min,
@@ -46,6 +60,41 @@ String resolveFfmpeg(String baseDir) {
   }
 }
 
+/// Build a [FfmpegCommand] that can be invoked for frame extraction.
+///
+/// [outDir] must be a path to an existing directory. Note that any existing frames will be
+/// overwritten on name collision.
+///
+/// [ffmpegPath] may be optionally specified as the path to the FFmpeg binary on the current system,
+/// otherwise it is assumed that ffmpeg is in your system path.
+///
+/// [start] and [end] can be optionally specified according to FFmpeg's
+/// [time duration specification syntax](https://www.ffmpeg.org/ffmpeg-utils.html#time-duration-syntax).
+/// If not specified, the start and end of the source video, respectively, are used.
+///
+/// [frameFormat] may be used to specify the image type to use when extracting frames.
+FfmpegCommand buildCommand({
+  required String source,
+  required String outDir,
+  String? ffmpegPath,
+  String? start,
+  String? end,
+  FrameFormat frameFormat = FrameFormat.png,
+}) {
+  final cmd = FfmpegCommand.simple(
+    ffmpegPath: ffmpegPath,
+    inputs: [FfmpegInput.asset(source)],
+    args: [
+      CliArg(name: 'hide_banner'),
+      if (start != null) CliArg(name: 'ss', value: start),
+      if (end != null) CliArg(name: 'to', value: end),
+    ],
+    outputFilepath: baseContext.join(outDir, 'frame%05d${frameFormat.extension}'),
+  );
+
+  return cmd;
+}
+
 /// Use ffmpeg to extract PNG frames from the provided source video file.
 ///
 /// [outDir] must be a path to an existing directory. Note that any existing frames will be
@@ -57,29 +106,32 @@ String resolveFfmpeg(String baseDir) {
 /// [start] and [end] can be optionally specified according to FFmpeg's
 /// [time duration specification syntax](https://www.ffmpeg.org/ffmpeg-utils.html#time-duration-syntax).
 /// If not specified, the start and end of the source video, respectively, are used.
+///
+/// [frameFormat] may be used to specify the image type to use when extracting frames.
 Future<int> extractFrames({
   required String source,
   required String outDir,
   String? ffmpegPath,
   String? start,
   String? end,
+  FrameFormat frameFormat = FrameFormat.png,
   bool verbose = false,
 }) async {
   if (!(await Directory(outDir).exists())) {
+    log('Frame output directory does not exist: $outDir');
     return 1;
   }
 
-  final cmd = FfmpegCommand.simple(
+  final cmd = buildCommand(
+    source: source,
+    outDir: outDir,
     ffmpegPath: ffmpegPath,
-    inputs: [FfmpegInput.asset(source)],
-    args: [
-      CliArg(name: 'hide_banner'),
-      if (start != null) CliArg(name: 'ss', value: start),
-      if (end != null) CliArg(name: 'to', value: end),
-    ],
-    outputFilepath: baseContext.join(outDir, 'frame%05d.png'),
+    start: start,
+    end: end,
+    frameFormat: frameFormat,
   );
 
+  log('Executing FFmpeg command: ${cmd.toCli()}');
   final proc = await Ffmpeg().run(cmd);
   if (verbose) {
     proc.stderr.transform(utf8.decoder).listen((data) {

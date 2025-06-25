@@ -20,7 +20,7 @@ void main() async {
   }
 
   await windowManager.ensureInitialized();
-  WindowOptions windowOptions = WindowOptions(size: Size(650, 500), center: true);
+  WindowOptions windowOptions = WindowOptions(size: Size(650, 525), center: true);
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setResizable(false);
     await windowManager.show();

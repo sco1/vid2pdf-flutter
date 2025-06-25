@@ -54,6 +54,8 @@ class _MainUIState extends State<MainUI> {
 
   String? _sourcePath;
 
+  FrameFormat _selectedFrameFormat = FrameFormat.png;
+
   Future<bool>? _pipelineResult;
   bool _isPipelineRunning = false;
 
@@ -73,10 +75,11 @@ class _MainUIState extends State<MainUI> {
       outDir: framePath,
       start: (startTime.isEmpty) ? null : startTime,
       end: (endTime.isEmpty) ? null : endTime,
+      frameFormat: _selectedFrameFormat,
     );
 
     final pdfOutPath = baseContext.setExtension(sourcePath, '.pdf');
-    await frames2pdf(framePath, pdfOutPath);
+    await frames2pdf(framePath, pdfOutPath, frameFormat: _selectedFrameFormat);
 
     await frameDir.delete(recursive: true);
     return true;
@@ -90,26 +93,27 @@ class _MainUIState extends State<MainUI> {
     // Disable additional pipeline invocation while one is still running
     setState(() {
       _isPipelineRunning = true;
-      _pipelineResult =
-          _pdfPipeline(
-                ffmpegPath: resolveFfmpeg(_ffmpegPathController.text),
-                sourcePath: _sourcePath!,
-                startTime: _startTimeController.text,
-                endTime: _endTimeController.text,
-              )
-              .then((r) {
-                setState(() {
-                  _isPipelineRunning = false;
-                });
-                return r;
-              })
-              .catchError((e) {
-                setState(() {
-                  _isPipelineRunning = false;
-                });
-                throw e;
-              });
     });
+
+    _pipelineResult =
+        _pdfPipeline(
+              ffmpegPath: resolveFfmpeg(_ffmpegPathController.text),
+              sourcePath: _sourcePath!,
+              startTime: _startTimeController.text,
+              endTime: _endTimeController.text,
+            )
+            .then((r) {
+              setState(() {
+                _isPipelineRunning = false;
+              });
+              return r;
+            })
+            .catchError((e) {
+              setState(() {
+                _isPipelineRunning = false;
+              });
+              throw e;
+            });
   }
 
   void _onFileDrop(String newFilePath) {
@@ -224,6 +228,19 @@ class _MainUIState extends State<MainUI> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  DropdownMenu(
+                    initialSelection: FrameFormat.png,
+                    dropdownMenuEntries: FrameFormat.asMenuEntries,
+                    label: Text('Frame Type'),
+                    onSelected: (FrameFormat? fmt) {
+                      if (fmt != null) {
+                        setState(() {
+                          _selectedFrameFormat = fmt;
+                        });
+                      }
+                    },
+                  ),
+                  SizedBox(width: 24),
                   ElevatedButton(
                     onPressed: (_isPipelineRunning || _sourcePath == null) ? null : _runPipeline,
                     child: Text('Generate PDF'),
