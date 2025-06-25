@@ -1,5 +1,7 @@
 name: vid2pdf
 description: "Convert a video into a PDF series of stills."
+repository: https://github.com/sco1/vid2pdf-flutter
+issue_tracker: https://github.com/sco1/vid2pdf-flutter/issues
 publish_to: 'none'
 version: 1.0.0
 

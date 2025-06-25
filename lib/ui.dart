@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -25,9 +26,14 @@ String _ffmpegPathFromEnv({String varName = 'FFMPEG_PATH'}) {
     return tryEnv;
   }
 
-  String? tryDotenv = dotenv.maybeGet(varName, fallback: null);
-  if (tryDotenv != null) {
-    return tryDotenv;
+  try {
+    String? tryDotenv = dotenv.maybeGet(varName, fallback: null);
+    if (tryDotenv != null) {
+      return tryDotenv;
+    }
+  } on NotInitializedError {
+    log('DotEnv not initialized, defaulting to empty value');
+    return '';
   }
 
   return '';
@@ -199,15 +205,6 @@ class _MainUIState extends State<MainUI> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  ElevatedButton(
-                    onPressed: (_isPipelineRunning || _sourcePath == null) ? null : _runPipeline,
-                    child: Text('Generate PDF'),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
                   (_pipelineResult == null)
                       ? Text('')
                       : FutureBuilder(
@@ -224,7 +221,15 @@ class _MainUIState extends State<MainUI> {
                         ),
                 ],
               ),
-              Row(children: [Text('Status updates here')]),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    onPressed: (_isPipelineRunning || _sourcePath == null) ? null : _runPipeline,
+                    child: Text('Generate PDF'),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
