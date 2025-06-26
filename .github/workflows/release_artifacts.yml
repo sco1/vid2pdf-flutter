@@ -69,5 +69,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          zip -r release-${{ matrix.os }}.zip ${{ matrix.artifact-path }}
+          tar -a -cf release-${{ matrix.os }}.zip ${{ matrix.artifact-path }}
+          HASH=$(sha256sum release-${{ matrix.os }}.zip)
+          echo DIGEST=$HASH
           gh release upload ${{ github.event.release.tag_name }} release-${{ matrix.os }}.zip
