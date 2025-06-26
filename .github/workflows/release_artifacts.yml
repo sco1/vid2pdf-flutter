@@ -1,0 +1,73 @@
+name: Build Release Artifacts
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build-os-artifacts:
+    name: Build & Upload Release Artifacts
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            build-cmd: flutter build windows
+            artifact-path: build/windows/x64/runner/Release
+          - os: ubuntu-latest
+            build-cmd: flutter build linux
+            artifact-path: build/linux/x64/release/bundle
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        id: flutter-action
+        with:
+          channel: stable
+          cache: true
+      - run: |
+          echo ARCHITECTURE=${{ steps.flutter-action.outputs.ARCHITECTURE }}
+          echo CHANNEL=${{ steps.flutter-action.outputs.CHANNEL }}
+          echo VERSION=${{ steps.flutter-action.outputs.VERSION }}
+          echo CACHE-HIT=${{ steps.flutter-action.outputs.CACHE-HIT }}
+          echo PUB-CACHE-HIT=${{ steps.flutter-action.outputs.PUB-CACHE-HIT }}
+
+      - name: Install Required Linux Dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ninja-build libgtk-3-dev
+
+      - name: Build Distribution (${{ matrix.os }})
+        run: |
+          echo "FFMPEG_PATH=" > .env
+          ${{ matrix.build-cmd }}
+
+      - name: Upload Artifact on Manual Trigger (${{ matrix.os }})
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        id: upload-artifact
+        with:
+          name: release-${{ matrix.os }}
+          include-hidden-files: true
+          if-no-files-found: error
+          path: ${{ matrix.artifact-path }}
+      - run: |
+          echo URL=${{ steps.upload-artifact.outputs.artifact-url }}
+          echo DIGEST=${{ steps.upload-artifact.outputs.artifact-digest }}
+
+      - name: Upload Artifact to Release (${{ matrix.os }})
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          zip -r release-${{ matrix.os }}.zip ${{ matrix.artifact-path }}
+          gh release upload ${{ github.event.release.tag_name }} release-${{ matrix.os }}.zip
