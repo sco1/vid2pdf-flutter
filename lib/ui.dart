@@ -217,7 +217,15 @@ class _MainUIState extends State<MainUI> {
                             if (snapshot.connectionState == ConnectionState.waiting) {
                               return CircularProgressIndicator();
                             } else if (snapshot.hasError) {
-                              return Text('Conversion Failed: ${snapshot.error}');
+                              return GestureDetector(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => ScrollableAlertDialog('${snapshot.error}\n'),
+                                  );
+                                },
+                                child: Text('Conversion Failed. Click for more details.'),
+                              );
                             } else {
                               return Text('Conversion complete');
                             }

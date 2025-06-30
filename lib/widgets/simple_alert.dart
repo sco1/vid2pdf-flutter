@@ -15,3 +15,41 @@ AlertDialog simpleWidgetAlert(BuildContext ctx, Widget body, {String actionMsg =
     actionsAlignment: MainAxisAlignment.center,
   );
 }
+
+class ScrollableAlertDialog extends StatefulWidget {
+  const ScrollableAlertDialog(this.msg, {super.key, this.actionMsg = 'OK'});
+
+  final String msg;
+  final String actionMsg;
+
+  @override
+  State<ScrollableAlertDialog> createState() => _ScrollableAlertDialogState();
+}
+
+class _ScrollableAlertDialogState extends State<ScrollableAlertDialog> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      content: Scrollbar(
+        controller: _scrollController,
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          child: SelectableText(widget.msg),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(widget.actionMsg)),
+      ],
+      actionsAlignment: MainAxisAlignment.center,
+    );
+  }
+}
