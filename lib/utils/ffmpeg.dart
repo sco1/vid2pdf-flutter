@@ -8,6 +8,16 @@ import 'package:ffmpeg_cli/ffmpeg_cli.dart';
 
 import 'package:vid2pdf/main.dart';
 
+class FfmpegNotFoundException implements Exception {
+  String msg;
+  FfmpegNotFoundException(this.msg);
+
+  @override
+  String toString() {
+    return 'Exception: $msg';
+  }
+}
+
 enum FrameFormat {
   png('PNG', '.png'),
   jpeg('JPEG', '.jpg');
@@ -50,11 +60,8 @@ String resolveFfmpeg(String baseDir) {
     case 'windows':
       return baseContext.join(baseDir, 'bin', 'ffmpeg.exe');
     case 'macos':
-      // TODO: Find macos path
-      throw UnimplementedError();
     case 'linux':
-      // TODO: Find linux path
-      throw UnimplementedError();
+      return baseContext.join(baseDir, 'bin', 'ffmpeg');
     default:
       throw UnimplementedError('Unsupported platform.');
   }

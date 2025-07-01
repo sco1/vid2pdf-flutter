@@ -57,7 +57,7 @@ class _MainUIState extends State<MainUI> {
   FrameFormat _selectedFrameFormat = FrameFormat.png;
 
   Future<bool>? _pipelineResult;
-  late Directory _frameDir;
+  Directory? _frameDir;
   bool _isPipelineRunning = false;
 
   Future<bool> _pdfPipeline({
@@ -66,9 +66,14 @@ class _MainUIState extends State<MainUI> {
     required String startTime,
     required String endTime,
   }) async {
+    final File ffmpegBin = File(ffmpegPath);
+    if (!await ffmpegBin.exists()) {
+      throw FfmpegNotFoundException("FFmpeg executable does not exist: '$ffmpegPath'");
+    }
+
     _frameDir = await Directory(sourcePath).parent.createTemp('_frames');
-    await _frameDir.create();
-    final String framePath = baseContext.canonicalize(_frameDir.path);
+    await _frameDir!.create();
+    final String framePath = baseContext.canonicalize(_frameDir!.path);
 
     await extractFrames(
       ffmpegPath: ffmpegPath,
@@ -82,7 +87,7 @@ class _MainUIState extends State<MainUI> {
     final pdfOutPath = baseContext.setExtension(sourcePath, '.pdf');
     await frames2pdf(framePath, pdfOutPath, frameFormat: _selectedFrameFormat);
 
-    await _frameDir.delete(recursive: true);
+    await _frameDir!.delete(recursive: true);
     return true;
   }
 
@@ -111,8 +116,8 @@ class _MainUIState extends State<MainUI> {
             })
             .catchError((e) async {
               // Clean up frame directory if it's still lingering
-              if (await _frameDir.exists()) {
-                _frameDir.delete(recursive: true);
+              if (_frameDir != null && await _frameDir!.exists()) {
+                _frameDir!.delete(recursive: true);
               }
 
               setState(() {
