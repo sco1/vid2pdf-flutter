@@ -56,6 +56,7 @@ class _MainUIState extends State<MainUI> {
 
   FrameFormat _selectedFrameFormat = FrameFormat.png;
 
+  final FfmpegManager _ffmpegManager = FfmpegManager();
   Future<bool>? _pipelineResult;
   Directory? _frameDir;
   bool _isPipelineRunning = false;
@@ -76,6 +77,7 @@ class _MainUIState extends State<MainUI> {
     final String framePath = baseContext.canonicalize(_frameDir!.path);
 
     await extractFrames(
+      ffmpegManager: _ffmpegManager,
       ffmpegPath: ffmpegPath,
       source: sourcePath,
       outDir: framePath,
@@ -226,7 +228,16 @@ class _MainUIState extends State<MainUI> {
                           future: _pipelineResult,
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) {
-                              return CircularProgressIndicator();
+                              return Row(
+                                spacing: 24,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  ElevatedButton(
+                                    onPressed: () => _ffmpegManager.kill(),
+                                    child: Text('Cancel'),
+                                  ),
+                                ],
+                              );
                             } else if (snapshot.hasError) {
                               return GestureDetector(
                                 onTap: () {
