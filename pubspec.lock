@@ -13,10 +13,10 @@ packages:
     dependency: transitive
     description:
       name: analyzer
-      sha256: f6154230675c44a191f2e20d16eeceb4aa18b30ca732db4efaf94c6a7d43cfa6
+      sha256: f648ac7103c7128c367c99c6684869bf47de4261afcef31f9c70c0f793b21f59
       url: "https://pub.dev"
     source: hosted
-    version: "7.5.2"
+    version: "7.5.3"
   archive:
     dependency: transitive
     description:

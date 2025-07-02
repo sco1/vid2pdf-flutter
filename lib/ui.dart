@@ -56,6 +56,7 @@ class _MainUIState extends State<MainUI> {
 
   FrameFormat _selectedFrameFormat = FrameFormat.png;
 
+  final FfmpegManager _ffmpegManager = FfmpegManager();
   Future<bool>? _pipelineResult;
   Directory? _frameDir;
   bool _isPipelineRunning = false;
@@ -76,6 +77,7 @@ class _MainUIState extends State<MainUI> {
     final String framePath = baseContext.canonicalize(_frameDir!.path);
 
     await extractFrames(
+      ffmpegManager: _ffmpegManager,
       ffmpegPath: ffmpegPath,
       source: sourcePath,
       outDir: framePath,
@@ -83,6 +85,14 @@ class _MainUIState extends State<MainUI> {
       end: (endTime.isEmpty) ? null : endTime,
       frameFormat: _selectedFrameFormat,
     );
+
+    // Bail out early if the user has attempted to cancel the pipeline
+    // Not sure if there's an easy way to cancel the PDF creation once it's been started
+    if (_ffmpegManager.sigterm) {
+      log('Pipeline terminated by user');
+      await _frameDir!.delete(recursive: true);
+      return false;
+    }
 
     final pdfOutPath = baseContext.setExtension(sourcePath, '.pdf');
     await frames2pdf(framePath, pdfOutPath, frameFormat: _selectedFrameFormat);
@@ -226,7 +236,16 @@ class _MainUIState extends State<MainUI> {
                           future: _pipelineResult,
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) {
-                              return CircularProgressIndicator();
+                              return Row(
+                                spacing: 24,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  ElevatedButton(
+                                    onPressed: () => _ffmpegManager.kill(),
+                                    child: Text('Cancel'),
+                                  ),
+                                ],
+                              );
                             } else if (snapshot.hasError) {
                               return GestureDetector(
                                 onTap: () {
@@ -238,7 +257,10 @@ class _MainUIState extends State<MainUI> {
                                 child: Text('Conversion Failed. Click for more details.'),
                               );
                             } else {
-                              return Text('Conversion complete');
+                              final String msg = (_ffmpegManager.sigterm)
+                                  ? 'Pipeline terminated by user'
+                                  : 'Conversion complete';
+                              return Text(msg);
                             }
                           },
                         ),

@@ -116,6 +116,7 @@ FfmpegCommand buildCommand({
 ///
 /// [frameFormat] may be used to specify the image type to use when extracting frames.
 Future<int> extractFrames({
+  required FfmpegManager ffmpegManager,
   required String source,
   required String outDir,
   String? ffmpegPath,
@@ -138,19 +139,41 @@ Future<int> extractFrames({
     frameFormat: frameFormat,
   );
 
-  log('Executing FFmpeg command: ${cmd.toCli()}');
-  final proc = await Ffmpeg().run(cmd);
-  if (verbose) {
-    proc.stderr.transform(utf8.decoder).listen((data) {
-      print(data); // ignore: avoid_print
-    });
-  } else {
-    proc.stderr.drain();
+  return await ffmpegManager.runCmd(cmd, verbose: verbose);
+}
+
+class FfmpegManager {
+  Process? _process;
+  bool sigterm = false;
+
+  Future<int> runCmd(FfmpegCommand cmd, {bool verbose = false}) async {
+    log('Executing FFmpeg command: ${cmd.toCli()}');
+    sigterm = false;
+    _process = await Ffmpeg().run(cmd);
+    if (verbose) {
+      _process!.stdout.transform(utf8.decoder).forEach(print); // ignore: avoid_print
+      _process!.stderr.transform(utf8.decoder).forEach(print); // ignore: avoid_print
+    } else {
+      _process!.stdout.drain();
+      _process!.stderr.drain();
+    }
+
+    if (await _process!.exitCode != 0) {
+      return 1;
+    } else {
+      return 0;
+    }
   }
 
-  if (await proc.exitCode != 0) {
-    return 1;
-  } else {
-    return 0;
+  void kill() {
+    log('Attempting to kill FFmpeg process...');
+    sigterm = true;
+
+    if (_process != null) {
+      log('Process found, PID: ${_process!.pid}');
+      _process!.kill();
+    }
+
+    log('No running FFmpeg process found');
   }
 }
