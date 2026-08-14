@@ -24,21 +24,33 @@ jobs:
             build-cmd: flutter build linux
             artifact-path: build/linux/x64/release/bundle
 
+    env:
+      BUNDLE_BASE_NAME: release_${{ matrix.os }}_${{ github.sha }}
+
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.23.0
         id: flutter-action
         with:
           channel: stable
           cache: true
+        env:
+          ARCHITECTURE: ${{ steps.flutter-action.outputs.ARCHITECTURE }}
+          CHANNEL: ${{ steps.flutter-action.outputs.CHANNEL }}
+          VERSION: ${{ steps.flutter-action.outputs.VERSION }}
+          CACHE-HIT: ${{ steps.flutter-action.outputs.CACHE-HIT }}
+          PUB-CACHE-HIT: ${{ steps.flutter-action.outputs.PUB-CACHE-HIT }}
       - run: |
-          echo ARCHITECTURE=${{ steps.flutter-action.outputs.ARCHITECTURE }}
-          echo CHANNEL=${{ steps.flutter-action.outputs.CHANNEL }}
-          echo VERSION=${{ steps.flutter-action.outputs.VERSION }}
-          echo CACHE-HIT=${{ steps.flutter-action.outputs.CACHE-HIT }}
-          echo PUB-CACHE-HIT=${{ steps.flutter-action.outputs.PUB-CACHE-HIT }}
+          echo ARCHITECTURE=${ARCHITECTURE}
+          echo CHANNEL=${CHANNEL}
+          echo VERSION=${VERSION}
+          echo CACHE-HIT=${CACHE-HIT}
+          echo PUB-CACHE-HIT=${PUB-CACHE-HIT}
+        
 
       - name: Install Required Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -53,23 +65,27 @@ jobs:
 
       - name: Upload Artifact on Manual Trigger (${{ matrix.os }})
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         id: upload-artifact
         with:
-          name: release-${{ matrix.os }}
+          name: ${{ env.BUNDLE_BASE_NAME }}
           include-hidden-files: true
           if-no-files-found: error
           path: ${{ matrix.artifact-path }}
+        env:
+          URL: ${{ steps.upload-artifact.outputs.artifact-url }}
+          DIGEST: ${{ steps.upload-artifact.outputs.artifact-digest }}
       - run: |
-          echo URL=${{ steps.upload-artifact.outputs.artifact-url }}
-          echo DIGEST=${{ steps.upload-artifact.outputs.artifact-digest }}
+          echo URL=${URL}
+          echo DIGEST=${DIGEST}
 
       - name: Upload Artifact to Release (${{ matrix.os }})
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          tar -a -cf release-${{ matrix.os }}.zip ${{ matrix.artifact-path }}
-          HASH=$(sha256sum release-${{ matrix.os }}.zip)
+          tar -a -cf ${BUNDLE_BASE_NAME}.zip ${{ matrix.artifact-path }}
+          HASH=$(sha256sum ${BUNDLE_BASE_NAME}.zip)
           echo DIGEST=$HASH
-          gh release upload ${{ github.event.release.tag_name }} release-${{ matrix.os }}.zip
+          gh release upload ${TAG_NAME} ${BUNDLE_BASE_NAME}.zip

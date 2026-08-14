@@ -166,7 +166,7 @@ class _MainUIState extends State<MainUI> {
                 children: [
                   ElevatedButton(
                     onPressed: () async {
-                      String? d = await FilePicker.platform.getDirectoryPath(
+                      String? d = await FilePicker.getDirectoryPath(
                         dialogTitle: 'Select Base FFmpeg Directory',
                       );
 
