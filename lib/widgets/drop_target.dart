@@ -67,14 +67,14 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
       // Click to open file prompt
       child: GestureDetector(
         onTap: () async {
-          FilePickerResult? r = await FilePicker.platform.pickFiles(
+          PlatformFile? r = await FilePicker.pickFile(
             dialogTitle: 'Select Source Video',
             type: FileType.video,
           );
 
           if (r != null) {
             setState(() {
-              sourceFile = r.files.single.path!;
+              sourceFile = r.path!;
             });
           }
         },
