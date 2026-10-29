@@ -21,6 +21,22 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
 
   Color _borderColor = Colors.black;
 
+  void _acceptFile(String filePath) {
+    if (widget.fileFilter != null && !widget.fileFilter!(filePath)) {
+      showDialog(
+        context: context,
+        builder: (ctx) => simpleAlert(ctx, 'This does not appear to be a video'),
+      );
+      return;
+    }
+
+    setState(() {
+      sourceFile = filePath;
+    });
+
+    widget.onFileDrop?.call(filePath);
+  }
+
   @override
   Widget build(BuildContext context) {
     return DropTarget(
@@ -41,42 +57,27 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
             builder: (ctx) =>
                 simpleAlert(ctx, 'Multi-file drag is not supported', actionMsg: 'Sorry'),
           );
-        } else {
-          final String droppedFile = d.files[0].path;
-
-          if (widget.fileFilter != null) {
-            final bool filterResult = widget.fileFilter!(droppedFile);
-            if (!filterResult) {
-              showDialog(
-                context: context,
-                builder: (ctx) => simpleAlert(context, 'This does not appear to be a video'),
-              );
-              return;
-            }
-          }
-
-          setState(() {
-            sourceFile = droppedFile;
-          });
-
-          if (widget.onFileDrop != null) {
-            widget.onFileDrop!(droppedFile);
-          }
+          return;
         }
+
+        if (d.files.isEmpty) {
+          return;
+        }
+
+        _acceptFile(d.files.single.path);
       },
-      // Click to open file prompt
       child: GestureDetector(
         onTap: () async {
-          PlatformFile? r = await FilePicker.pickFile(
+          final PlatformFile? result = await FilePicker.pickFile(
             dialogTitle: 'Select Source Video',
             type: FileType.video,
           );
 
-          if (r != null) {
-            setState(() {
-              sourceFile = r.path!;
-            });
+          if (!mounted || result?.path == null) {
+            return;
           }
+
+          _acceptFile(result!.path!);
         },
         child: Container(
           height: 150,
@@ -86,7 +87,7 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
           ),
           child: Center(
             child: Text(
-              (sourceFile == null)
+              sourceFile == null
                   ? 'Drop source video here, or click to browse'
                   : baseContext.basename(sourceFile!),
             ),
