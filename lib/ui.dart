@@ -21,13 +21,13 @@ import 'package:vid2pdf/widgets/simple_alert.dart';
 ///
 /// If neither approach yields a value, an empty string is returned.
 String _ffmpegPathFromEnv({String varName = 'FFMPEG_PATH'}) {
-  String tryEnv = String.fromEnvironment(varName);
-  if (tryEnv.isNotEmpty) {
+  final String? tryEnv = Platform.environment[varName];
+  if (tryEnv != null && tryEnv.isNotEmpty) {
     return tryEnv;
   }
 
   try {
-    String? tryDotenv = dotenv.maybeGet(varName, fallback: null);
+    final String? tryDotenv = dotenv.maybeGet(varName, fallback: null);
     if (tryDotenv != null) {
       return tryDotenv;
     }
@@ -67,10 +67,7 @@ class _MainUIState extends State<MainUI> {
     required String startTime,
     required String endTime,
   }) async {
-    final File ffmpegBin = File(ffmpegPath);
-    if (!await ffmpegBin.exists()) {
-      throw FfmpegNotFoundException("FFmpeg executable does not exist: '$ffmpegPath'");
-    }
+    await checkFfmpegAvailable(ffmpegPath);
 
     _frameDir = await Directory(sourcePath).parent.createTemp('_frames');
     await _frameDir!.create();

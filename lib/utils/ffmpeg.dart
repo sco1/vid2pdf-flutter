@@ -53,9 +53,14 @@ const Column timeSpec = Column(
 
 /// Resolve the location of the FFmpeg binary relative to the provided base directory.
 ///
-/// The FFmpeg binary location is assumed to be in a fixed location per operating system, e.g. for
-/// Windows the binary is located at `baseDir/bin/ffmpeg.exe`.
+/// If [baseDir] is `'ffmpeg'`, it is returned as-is so the system PATH is used.
+/// Otherwise, the FFmpeg binary location is assumed to be in a fixed location per operating system,
+/// e.g. for Windows the binary is located at `baseDir/bin/ffmpeg.exe`.
 String resolveFfmpeg(String baseDir) {
+  if (baseDir == 'ffmpeg') {
+    return baseDir;
+  }
+
   switch (Platform.operatingSystem) {
     case 'windows':
       return baseContext.join(baseDir, 'bin', 'ffmpeg.exe');
@@ -64,6 +69,20 @@ String resolveFfmpeg(String baseDir) {
       return baseContext.join(baseDir, 'bin', 'ffmpeg');
     default:
       throw UnimplementedError('Unsupported platform.');
+  }
+}
+
+/// Verify that the FFmpeg binary at [ffmpegPath] (or on system PATH) can be executed.
+///
+/// Throws [FfmpegNotFoundException] if the binary cannot be found or fails to run.
+Future<void> checkFfmpegAvailable(String ffmpegPath) async {
+  try {
+    final result = await Process.run(ffmpegPath, ['-version']);
+    if (result.exitCode != 0) {
+      throw FfmpegNotFoundException("FFmpeg executable failed check: '$ffmpegPath'");
+    }
+  } on ProcessException {
+    throw FfmpegNotFoundException("FFmpeg executable does not exist: '$ffmpegPath'");
   }
 }
 
