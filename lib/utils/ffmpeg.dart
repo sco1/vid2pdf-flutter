@@ -18,6 +18,21 @@ class FfmpegNotFoundException implements Exception {
   }
 }
 
+class FfmpegExecutionException implements Exception {
+  final int exitCode;
+  final String stderr;
+  FfmpegExecutionException(this.exitCode, this.stderr);
+
+  @override
+  String toString() {
+    final details = stderr.trim();
+    if (details.isEmpty) {
+      return 'FFmpeg exited with code $exitCode';
+    }
+    return 'FFmpeg exited with code $exitCode:\n\n$details';
+  }
+}
+
 enum FrameFormat {
   png('PNG', '.png'),
   jpeg('JPEG', '.jpg');
@@ -164,20 +179,34 @@ Future<int> extractFrames({
 class FfmpegManager {
   Process? _process;
   bool sigterm = false;
+  String lastStderr = '';
 
   Future<int> runCmd(FfmpegCommand cmd, {bool verbose = false}) async {
     log('Executing FFmpeg command: ${cmd.toCli()}');
     sigterm = false;
+    lastStderr = '';
     _process = await Ffmpeg().run(cmd);
-    if (verbose) {
-      _process!.stdout.transform(utf8.decoder).forEach(print); // ignore: avoid_print
-      _process!.stderr.transform(utf8.decoder).forEach(print); // ignore: avoid_print
-    } else {
-      _process!.stdout.drain();
-      _process!.stderr.drain();
-    }
 
-    if (await _process!.exitCode != 0) {
+    final stderrBuffer = StringBuffer();
+    final stdoutFuture = verbose
+        ? _process!.stdout.transform(utf8.decoder).forEach(print) // ignore: avoid_print
+        : _process!.stdout.drain<void>();
+    final stderrFuture = _process!.stderr.transform(utf8.decoder).forEach((chunk) {
+      stderrBuffer.write(chunk);
+      if (verbose) {
+        print(chunk); // ignore: avoid_print
+      }
+    });
+
+    final exitCode = await _process!.exitCode;
+    await Future.wait([stdoutFuture, stderrFuture]);
+    _process = null;
+    lastStderr = stderrBuffer.toString();
+
+    if (exitCode != 0) {
+      if (!sigterm) {
+        throw FfmpegExecutionException(exitCode, lastStderr);
+      }
       return 1;
     } else {
       return 0;
@@ -191,8 +220,8 @@ class FfmpegManager {
     if (_process != null) {
       log('Process found, PID: ${_process!.pid}');
       _process!.kill();
+    } else {
+      log('No running FFmpeg process found');
     }
-
-    log('No running FFmpeg process found');
   }
 }

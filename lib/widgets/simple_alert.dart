@@ -42,7 +42,6 @@ class _ScrollableAlertDialogState extends State<ScrollableAlertDialog> {
         controller: _scrollController,
         child: SingleChildScrollView(
           controller: _scrollController,
-          scrollDirection: Axis.horizontal,
           child: SelectableText(widget.msg),
         ),
       ),
