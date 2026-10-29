@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'package:vid2pdf/main.dart';
 import 'package:vid2pdf/utils/ffmpeg.dart';
@@ -46,7 +47,7 @@ class MainUI extends StatefulWidget {
   State<MainUI> createState() => _MainUIState();
 }
 
-class _MainUIState extends State<MainUI> {
+class _MainUIState extends State<MainUI> with WindowListener {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _ffmpegPathController = TextEditingController();
   final TextEditingController _startTimeController = TextEditingController();
@@ -143,9 +144,24 @@ class _MainUIState extends State<MainUI> {
   @override
   void initState() {
     super.initState();
+    windowManager.addListener(this);
 
     final String ffmpegEnv = _ffmpegPathFromEnv();
     _ffmpegPathController.text = (ffmpegEnv.isEmpty) ? 'ffmpeg' : ffmpegEnv;
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    _ffmpegPathController.dispose();
+    _startTimeController.dispose();
+    _endTimeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void onWindowClose() {
+    _ffmpegManager.kill();
   }
 
   @override
