@@ -5,27 +5,41 @@ on:
   release:
     types: [published]
 
+permissions: {}
+
 jobs:
   build-os-artifacts:
     name: Build & Upload Release Artifacts
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    defaults:
+      run:
+        shell: bash
 
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
         include:
           - os: windows-latest
+            platform: windows-x64
             build-cmd: flutter build windows
-            artifact-path: build/windows/x64/runner/Release
+            artifact-dir: build/windows/x64/runner/Release
+            artifact-target: .
           - os: ubuntu-latest
+            platform: linux-x64
             build-cmd: flutter build linux
-            artifact-path: build/linux/x64/release/bundle
+            artifact-dir: build/linux/x64/release/bundle
+            artifact-target: .
+          - os: macos-latest
+            platform: macos
+            build-cmd: flutter build macos
+            artifact-dir: build/macos/Build/Products/Release
+            artifact-target: vid2pdf.app
 
     env:
-      BUNDLE_BASE_NAME: release_${{ matrix.os }}_${{ github.sha }}
+      # Manual runs have no release tag, so fall back to the commit SHA
+      BUNDLE_BASE_NAME: vid2pdf-${{ github.event.release.tag_name || github.sha }}-${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v7.0.1
@@ -38,19 +52,20 @@ jobs:
         with:
           channel: stable
           cache: true
+
+      - name: Print Flutter Info
         env:
           ARCHITECTURE: ${{ steps.flutter-action.outputs.ARCHITECTURE }}
           CHANNEL: ${{ steps.flutter-action.outputs.CHANNEL }}
           VERSION: ${{ steps.flutter-action.outputs.VERSION }}
-          CACHE-HIT: ${{ steps.flutter-action.outputs.CACHE-HIT }}
-          PUB-CACHE-HIT: ${{ steps.flutter-action.outputs.PUB-CACHE-HIT }}
-      - run: |
-          echo ARCHITECTURE=${ARCHITECTURE}
-          echo CHANNEL=${CHANNEL}
-          echo VERSION=${VERSION}
-          echo CACHE-HIT=${CACHE-HIT}
-          echo PUB-CACHE-HIT=${PUB-CACHE-HIT}
-        
+          CACHE_HIT: ${{ steps.flutter-action.outputs.CACHE-HIT }}
+          PUB_CACHE_HIT: ${{ steps.flutter-action.outputs.PUB-CACHE-HIT }}
+        run: |
+          echo "ARCHITECTURE=${ARCHITECTURE}"
+          echo "CHANNEL=${CHANNEL}"
+          echo "VERSION=${VERSION}"
+          echo "CACHE-HIT=${CACHE_HIT}"
+          echo "PUB-CACHE-HIT=${PUB_CACHE_HIT}"
 
       - name: Install Required Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -71,21 +86,39 @@ jobs:
           name: ${{ env.BUNDLE_BASE_NAME }}
           include-hidden-files: true
           if-no-files-found: error
-          path: ${{ matrix.artifact-path }}
+          path: ${{ matrix.artifact-dir }}/${{ matrix.artifact-target }}
+
+      - name: Print Artifact Info
+        if: github.event_name == 'workflow_dispatch'
         env:
           URL: ${{ steps.upload-artifact.outputs.artifact-url }}
           DIGEST: ${{ steps.upload-artifact.outputs.artifact-digest }}
-      - run: |
-          echo URL=${URL}
-          echo DIGEST=${DIGEST}
+        run: |
+          echo "URL=${URL}"
+          echo "DIGEST=${DIGEST}"
 
       - name: Upload Artifact to Release (${{ matrix.os }})
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.event.release.tag_name }}
+          ARTIFACT_DIR: ${{ matrix.artifact-dir }}
+          ARTIFACT_TARGET: ${{ matrix.artifact-target }}
         run: |
-          tar -a -cf ${BUNDLE_BASE_NAME}.zip ${{ matrix.artifact-path }}
-          HASH=$(sha256sum ${BUNDLE_BASE_NAME}.zip)
-          echo DIGEST=$HASH
-          gh release upload ${TAG_NAME} ${BUNDLE_BASE_NAME}.zip
+          case "${RUNNER_OS}" in
+            macOS)
+              ARCHIVE="${BUNDLE_BASE_NAME}.zip"
+              ditto -c -k --keepParent "${ARTIFACT_DIR}/${ARTIFACT_TARGET}" "${ARCHIVE}"
+              ;;
+            Linux)
+              ARCHIVE="${BUNDLE_BASE_NAME}.tar.gz"
+              tar -czf "${ARCHIVE}" -C "${ARTIFACT_DIR}" "${ARTIFACT_TARGET}"
+              ;;
+            Windows)
+              ARCHIVE="${BUNDLE_BASE_NAME}.zip"
+              (cd "${ARTIFACT_DIR}" && 7z a -tzip "${GITHUB_WORKSPACE}/${ARCHIVE}" "${ARTIFACT_TARGET}")
+              ;;
+          esac
+          HASH=$(shasum -a 256 "${ARCHIVE}")
+          echo "DIGEST=${HASH}"
+          gh release upload "${TAG_NAME}" "${ARCHIVE}"

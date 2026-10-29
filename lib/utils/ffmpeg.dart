@@ -55,14 +55,13 @@ const Column timeSpec = Column(
       style: TextStyle(fontWeight: FontWeight.bold),
     ),
     SizedBox(height: 16),
-    Text('''\
-    FFmpeg supports two types of syntax for expressing time duration:
+    Text('''
+FFmpeg supports two types of syntax for expressing time duration:
 
-    * [HH:]MM:SS[.m...]
-    * S+[.m...][s|ms|us]
+* [HH:]MM:SS[.m...]
+* S+[.m...][s|ms|us]
 
-    For example, to specify 1 minute & 5 seconds, you can use 01:05.5 or 65.5
-    '''),
+For example, to specify 1 minute & 5 seconds, you can use 01:05.5 or 65.5'''),
   ],
 );
 
@@ -189,7 +188,9 @@ class FfmpegManager {
 
     final stderrBuffer = StringBuffer();
     final stdoutFuture = verbose
-        ? _process!.stdout.transform(utf8.decoder).forEach(print) // ignore: avoid_print
+        ? _process!.stdout
+              .transform(utf8.decoder)
+              .forEach(print) // ignore: avoid_print
         : _process!.stdout.drain<void>();
     final stderrFuture = _process!.stderr.transform(utf8.decoder).forEach((chunk) {
       stderrBuffer.write(chunk);

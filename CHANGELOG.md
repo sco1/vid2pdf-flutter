@@ -9,6 +9,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`<ma
 ### Changed
 * #4 Pipeline errors are now surfaced as a popup dialog rather than being discarded
 * Pipeline now aborts if FFmpeg executable isn't found or exits with a non-zero status
+* Temporary frames are now extracted to the system temp directory rather than next to the source video
+* Disable macOS App Sandbox entitlement to allow invoking host FFmpeg and writing output PDFs
 
 ### Fixed
 * Temporary frame directory should be cleaned up if pipeline exits unexpectedly

@@ -30,7 +30,7 @@ Future<void> frames2pdf(
           .where((f) => f.path.toLowerCase().endsWith(frameFormat.extension))
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
-  log('Sorted ${members.length} matching frames');
+  log('Sorted ${sortedFrames.length} matching frames');
 
   for (File f in sortedFrames) {
     final img = pw.MemoryImage(f.readAsBytesSync());

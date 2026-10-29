@@ -70,8 +70,7 @@ class _MainUIState extends State<MainUI> with WindowListener {
   }) async {
     await checkFfmpegAvailable(ffmpegPath);
 
-    _frameDir = await Directory(sourcePath).parent.createTemp('_frames');
-    await _frameDir!.create();
+    _frameDir = await Directory.systemTemp.createTemp('vid2pdf_frames_');
     final String framePath = baseContext.canonicalize(_frameDir!.path);
 
     await extractFrames(
