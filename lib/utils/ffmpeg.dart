@@ -33,6 +33,23 @@ class FfmpegExecutionException implements Exception {
   }
 }
 
+class NoFramesExtractedException implements Exception {
+  final String details;
+  NoFramesExtractedException([this.details = '']);
+
+  @override
+  String toString() {
+    const msg =
+        "No frames were extracted. Check that start and/or end time falls within the video's duration";
+
+    final trimmed = details.trim();
+    if (trimmed.isEmpty) {
+      return msg;
+    }
+    return '$msg\n\nFFmpeg output:\n\n$trimmed';
+  }
+}
+
 /// Image formats available for frame extraction.
 ///
 /// [ffmpegArgs] are format-specific output arguments appended to the extraction command.
@@ -131,6 +148,9 @@ FfmpegCommand buildCommand({
     inputs: [FfmpegInput.asset(source)],
     args: [
       CliArg(name: 'hide_banner'),
+      // Keep stderr to actual errors so failure details aren't buried in progress output
+      CliArg.logLevel(LogLevel.error),
+      CliArg(name: 'nostdin'), // Don't listen for keypresses on stdin
       if (start != null) CliArg(name: 'ss', value: start),
       if (end != null) CliArg(name: 'to', value: end),
       ...frameFormat.ffmpegArgs,
@@ -154,6 +174,8 @@ FfmpegCommand buildCommand({
 /// If not specified, the start and end of the source video, respectively, are used.
 ///
 /// [frameFormat] may be used to specify the image type to use when extracting frames.
+///
+/// Throws [NoFramesExtractedException] if FFmpeg was not cancelled but no frames were produced.
 Future<int> extractFrames({
   required FfmpegManager ffmpegManager,
   required String source,
@@ -165,8 +187,7 @@ Future<int> extractFrames({
   bool verbose = false,
 }) async {
   if (!(await Directory(outDir).exists())) {
-    log('Frame output directory does not exist: $outDir');
-    return 1;
+    throw FileSystemException('Frame output directory does not exist', outDir);
   }
 
   final cmd = buildCommand(
@@ -178,7 +199,26 @@ Future<int> extractFrames({
     frameFormat: frameFormat,
   );
 
-  return await ffmpegManager.runCmd(cmd, verbose: verbose);
+  Future<bool> hasFrames() => Directory(
+    outDir,
+  ).list().any((e) => e is File && e.path.toLowerCase().endsWith(frameFormat.extension));
+
+  final int result;
+  try {
+    result = await ffmpegManager.runCmd(cmd, verbose: verbose);
+  } on FfmpegExecutionException catch (e) {
+    // e.g. JPEG output fails with an encoder error rather than a clean exit when there are no frames
+    if (!(await hasFrames())) {
+      throw NoFramesExtractedException(e.stderr);
+    }
+    rethrow;
+  }
+
+  if (!ffmpegManager.sigterm && !(await hasFrames())) {
+    throw NoFramesExtractedException(ffmpegManager.lastStderr);
+  }
+
+  return result;
 }
 
 class FfmpegManager {

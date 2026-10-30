@@ -22,6 +22,15 @@ void main() {
       expect(args.last, endsWith('.png'));
     });
 
+    test('Non-interactive & error-only logging args are included', () {
+      final args = buildCommand(source: 'in.mp4', outDir: 'out').toCli().args;
+
+      expect(args, contains('-nostdin'));
+      final logIdx = args.indexOf('-loglevel');
+      expect(logIdx, isNot(-1));
+      expect(args[logIdx + 1], equals('error'));
+    });
+
     test('Output args are placed after the input', () {
       final cmd = buildCommand(
         source: 'in.mp4',
