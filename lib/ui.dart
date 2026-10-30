@@ -56,7 +56,7 @@ class _MainUIState extends State<MainUI> with WindowListener {
 
   String? _sourcePath;
 
-  FrameFormat _selectedFrameFormat = FrameFormat.png;
+  FrameFormat _selectedFrameFormat = FrameFormat.jpeg;
 
   final FfmpegManager _ffmpegManager = FfmpegManager();
   Future<bool>? _pipelineResult;
@@ -351,7 +351,7 @@ class _MainUIState extends State<MainUI> with WindowListener {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   DropdownMenu(
-                    initialSelection: FrameFormat.png,
+                    initialSelection: FrameFormat.jpeg,
                     enabled: !_isPipelineRunning,
                     dropdownMenuEntries: FrameFormat.asMenuEntries,
                     label: Text('Frame Type'),

@@ -33,13 +33,18 @@ class FfmpegExecutionException implements Exception {
   }
 }
 
+/// Image formats available for frame extraction.
+///
+/// [ffmpegArgs] are format-specific output arguments appended to the extraction command.
 enum FrameFormat {
-  png('PNG', '.png'),
-  jpeg('JPEG', '.jpg');
+  // Quality scale is 2-31, lower is better
+  jpeg('JPEG', '.jpg', [CliArg(name: 'q:v', value: '2')]),
+  png('PNG', '.png', []);
 
-  const FrameFormat(this.name, this.extension);
+  const FrameFormat(this.name, this.extension, this.ffmpegArgs);
   final String name;
   final String extension;
+  final List<CliArg> ffmpegArgs;
 
   static final List<DropdownMenuEntry<FrameFormat>> asMenuEntries = values
       .map((FrameFormat fmt) => DropdownMenuEntry(value: fmt, label: fmt.name))
@@ -119,7 +124,7 @@ FfmpegCommand buildCommand({
   String? ffmpegPath,
   String? start,
   String? end,
-  FrameFormat frameFormat = FrameFormat.png,
+  FrameFormat frameFormat = FrameFormat.jpeg,
 }) {
   final cmd = FfmpegCommand.simple(
     ffmpegPath: ffmpegPath,
@@ -128,6 +133,7 @@ FfmpegCommand buildCommand({
       CliArg(name: 'hide_banner'),
       if (start != null) CliArg(name: 'ss', value: start),
       if (end != null) CliArg(name: 'to', value: end),
+      ...frameFormat.ffmpegArgs,
     ],
     outputFilepath: baseContext.join(outDir, 'frame%05d${frameFormat.extension}'),
   );
@@ -135,7 +141,7 @@ FfmpegCommand buildCommand({
   return cmd;
 }
 
-/// Use ffmpeg to extract PNG frames from the provided source video file.
+/// Use ffmpeg to extract frames from the provided source video file.
 ///
 /// [outDir] must be a path to an existing directory. Note that any existing frames will be
 /// overwritten on name collision.
@@ -155,7 +161,7 @@ Future<int> extractFrames({
   String? ffmpegPath,
   String? start,
   String? end,
-  FrameFormat frameFormat = FrameFormat.png,
+  FrameFormat frameFormat = FrameFormat.jpeg,
   bool verbose = false,
 }) async {
   if (!(await Directory(outDir).exists())) {
