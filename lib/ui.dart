@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
@@ -61,41 +62,79 @@ class _MainUIState extends State<MainUI> with WindowListener {
   Future<bool>? _pipelineResult;
   Directory? _frameDir;
   bool _isPipelineRunning = false;
+  Future<void>? _shutdownFuture;
+  late final AppLifecycleListener _appLifecycleListener;
 
+  /// Delete the temporary frame directory, if one exists.
+  ///
+  /// Safe to call multiple times, e.g. from both the pipeline & the window close handler.
+  ///
+  /// NOTE: Deletion failures are logged rather than thrown
+  Future<void> _cleanupFrameDir() async {
+    final Directory? dir = _frameDir;
+    _frameDir = null;
+
+    try {
+      if (dir != null && await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    } on FileSystemException catch (e) {
+      log('Failed to clean up frame directory: $e');
+    }
+  }
+
+  /// Run the full video to PDF pipeline.
+  ///
+  /// Returns `true` if the PDF was written, or `false` if the pipeline was cancelled by the user.
   Future<bool> _pdfPipeline({
     required String ffmpegPath,
     required String sourcePath,
     required String startTime,
     required String endTime,
+    required FrameFormat frameFormat,
   }) async {
+    _ffmpegManager.reset();
+
     await checkFfmpegAvailable(ffmpegPath);
+    if (_ffmpegManager.sigterm) {
+      log('Pipeline terminated by user');
+      return false;
+    }
 
     _frameDir = await Directory.systemTemp.createTemp('vid2pdf_frames_');
     final String framePath = baseContext.canonicalize(_frameDir!.path);
 
-    await extractFrames(
-      ffmpegManager: _ffmpegManager,
-      ffmpegPath: ffmpegPath,
-      source: sourcePath,
-      outDir: framePath,
-      start: (startTime.isEmpty) ? null : startTime,
-      end: (endTime.isEmpty) ? null : endTime,
-      frameFormat: _selectedFrameFormat,
-    );
+    try {
+      await extractFrames(
+        ffmpegManager: _ffmpegManager,
+        ffmpegPath: ffmpegPath,
+        source: sourcePath,
+        outDir: framePath,
+        start: (startTime.isEmpty) ? null : startTime,
+        end: (endTime.isEmpty) ? null : endTime,
+        frameFormat: frameFormat,
+      );
 
-    // Bail out early if the user has attempted to cancel the pipeline
-    // Not sure if there's an easy way to cancel the PDF creation once it's been started
-    if (_ffmpegManager.sigterm) {
-      log('Pipeline terminated by user');
-      await _frameDir!.delete(recursive: true);
-      return false;
+      if (_ffmpegManager.sigterm) {
+        log('Pipeline terminated by user');
+        return false;
+      }
+
+      final pdfOutPath = baseContext.setExtension(sourcePath, '.pdf');
+      final bool written = await frames2pdf(
+        framePath,
+        pdfOutPath,
+        frameFormat: frameFormat,
+        isCancelled: () => _ffmpegManager.sigterm,
+      );
+
+      if (!written) {
+        log('Pipeline terminated by user');
+      }
+      return written;
+    } finally {
+      await _cleanupFrameDir();
     }
-
-    final pdfOutPath = baseContext.setExtension(sourcePath, '.pdf');
-    await frames2pdf(framePath, pdfOutPath, frameFormat: _selectedFrameFormat);
-
-    await _frameDir!.delete(recursive: true);
-    return true;
   }
 
   void _runPipeline() {
@@ -110,28 +149,16 @@ class _MainUIState extends State<MainUI> with WindowListener {
 
     _pipelineResult =
         _pdfPipeline(
-              ffmpegPath: resolveFfmpeg(_ffmpegPathController.text),
-              sourcePath: _sourcePath!,
-              startTime: _startTimeController.text,
-              endTime: _endTimeController.text,
-            )
-            .then((r) {
-              setState(() {
-                _isPipelineRunning = false;
-              });
-              return r;
-            })
-            .catchError((e) async {
-              // Clean up frame directory if it's still lingering
-              if (_frameDir != null && await _frameDir!.exists()) {
-                _frameDir!.delete(recursive: true);
-              }
-
-              setState(() {
-                _isPipelineRunning = false;
-              });
-              throw e;
-            });
+          ffmpegPath: resolveFfmpeg(_ffmpegPathController.text),
+          sourcePath: _sourcePath!,
+          startTime: _startTimeController.text,
+          endTime: _endTimeController.text,
+          frameFormat: _selectedFrameFormat,
+        ).whenComplete(() {
+          setState(() {
+            _isPipelineRunning = false;
+          });
+        });
   }
 
   void _onFileDrop(String newFilePath) {
@@ -145,6 +172,12 @@ class _MainUIState extends State<MainUI> with WindowListener {
     super.initState();
     windowManager.addListener(this);
 
+    // Intercept window close so any running FFmpeg process can be shut down first by onWindowClose
+    windowManager.setPreventClose(true);
+
+    // App-level quit requests bypass window close, so handle them separately
+    _appLifecycleListener = AppLifecycleListener(onExitRequested: _onExitRequested);
+
     final String ffmpegEnv = _ffmpegPathFromEnv();
     _ffmpegPathController.text = (ffmpegEnv.isEmpty) ? 'ffmpeg' : ffmpegEnv;
   }
@@ -152,15 +185,51 @@ class _MainUIState extends State<MainUI> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
+    _appLifecycleListener.dispose();
     _ffmpegPathController.dispose();
     _startTimeController.dispose();
     _endTimeController.dispose();
     super.dispose();
   }
 
-  @override
-  void onWindowClose() {
+  /// Stop any running pipeline & clean up its temporary files.
+  ///
+  /// Shared by the window close & app exit handlers; repeat calls return the in-progress shutdown
+  Future<void> _shutdown() => _shutdownFuture ??= _runShutdown();
+
+  Future<void> _runShutdown() async {
     _ffmpegManager.kill();
+
+    // Give the pipeline a chance to wind down & clean up after itself before closing
+    if (_isPipelineRunning && _pipelineResult != null) {
+      try {
+        await _pipelineResult!.timeout(Duration(seconds: 3));
+      } catch (e) {
+        log('Pipeline did not shut down cleanly: $e');
+      }
+    }
+
+    await _cleanupFrameDir();
+  }
+
+  @override
+  Future<void> onWindowClose() async {
+    try {
+      await _shutdown();
+    } finally {
+      // Since we've intercepted window close, destroy must always be reached or the window sticks
+      await windowManager.destroy();
+    }
+  }
+
+  Future<AppExitResponse> _onExitRequested() async {
+    try {
+      await _shutdown();
+    } catch (e) {
+      // Never block the exit, even if cleanup fails
+      log('Shutdown failed during exit request: $e');
+    }
+    return AppExitResponse.exit;
   }
 
   @override
@@ -269,9 +338,9 @@ class _MainUIState extends State<MainUI> with WindowListener {
                                 child: Text('Conversion Failed. Click for more details.'),
                               );
                             } else {
-                              final String msg = (_ffmpegManager.sigterm)
-                                  ? 'Pipeline terminated by user'
-                                  : 'Conversion complete';
+                              final String msg = (snapshot.data ?? false)
+                                  ? 'Conversion complete'
+                                  : 'Pipeline terminated by user';
                               return Text(msg);
                             }
                           },
@@ -283,6 +352,7 @@ class _MainUIState extends State<MainUI> with WindowListener {
                 children: [
                   DropdownMenu(
                     initialSelection: FrameFormat.png,
+                    enabled: !_isPipelineRunning,
                     dropdownMenuEntries: FrameFormat.asMenuEntries,
                     label: Text('Frame Type'),
                     onSelected: (FrameFormat? fmt) {

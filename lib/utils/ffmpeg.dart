@@ -180,11 +180,20 @@ class FfmpegManager {
   bool sigterm = false;
   String lastStderr = '';
 
+  /// Clear any prior cancellation request; call at the start of a pipeline run.
+  void reset() {
+    sigterm = false;
+  }
+
   Future<int> runCmd(FfmpegCommand cmd, {bool verbose = false}) async {
     log('Executing FFmpeg command: ${cmd.toCli()}');
-    sigterm = false;
     lastStderr = '';
     _process = await Ffmpeg().run(cmd);
+
+    // Cancellation may have been requested while the process was starting
+    if (sigterm) {
+      _process!.kill();
+    }
 
     final stderrBuffer = StringBuffer();
     final stdoutFuture = verbose
