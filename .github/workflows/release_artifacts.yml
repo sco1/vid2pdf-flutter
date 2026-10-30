@@ -78,30 +78,9 @@ jobs:
           echo "FFMPEG_PATH=" > .env
           ${{ matrix.build-cmd }}
 
-      - name: Upload Artifact on Manual Trigger (${{ matrix.os }})
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v7.0.1
-        id: upload-artifact
-        with:
-          name: ${{ env.BUNDLE_BASE_NAME }}
-          include-hidden-files: true
-          if-no-files-found: error
-          path: ${{ matrix.artifact-dir }}/${{ matrix.artifact-target }}
-
-      - name: Print Artifact Info
-        if: github.event_name == 'workflow_dispatch'
+      - name: Archive Distribution (${{ matrix.os }})
+        id: archive
         env:
-          URL: ${{ steps.upload-artifact.outputs.artifact-url }}
-          DIGEST: ${{ steps.upload-artifact.outputs.artifact-digest }}
-        run: |
-          echo "URL=${URL}"
-          echo "DIGEST=${DIGEST}"
-
-      - name: Upload Artifact to Release (${{ matrix.os }})
-        if: github.event_name == 'release'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.event.release.tag_name }}
           ARTIFACT_DIR: ${{ matrix.artifact-dir }}
           ARTIFACT_TARGET: ${{ matrix.artifact-target }}
         run: |
@@ -121,4 +100,30 @@ jobs:
           esac
           HASH=$(shasum -a 256 "${ARCHIVE}")
           echo "DIGEST=${HASH}"
-          gh release upload "${TAG_NAME}" "${ARCHIVE}"
+          echo "archive=${ARCHIVE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload Artifact on Manual Trigger (${{ matrix.os }})
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7.0.1
+        id: upload-artifact
+        with:
+          archive: false
+          if-no-files-found: error
+          path: ${{ steps.archive.outputs.archive }}
+
+      - name: Print Artifact Info
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          URL: ${{ steps.upload-artifact.outputs.artifact-url }}
+          DIGEST: ${{ steps.upload-artifact.outputs.artifact-digest }}
+        run: |
+          echo "URL=${URL}"
+          echo "DIGEST=${DIGEST}"
+
+      - name: Upload Artifact to Release (${{ matrix.os }})
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          ARCHIVE: ${{ steps.archive.outputs.archive }}
+        run: gh release upload "${TAG_NAME}" "${ARCHIVE}"
