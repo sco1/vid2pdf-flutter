@@ -15,6 +15,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`<ma
 * FFmpeg specification now additionally accepts a path to the executable, or a directory containing it up to two levels deep (e.g. `<dir>/ffmpeg.exe`, `<dir>/bin/ffmpeg.exe`)
 * Default frame format has been switched from PNG to JPEG
 * JPEG frames are now explicitly extracted at high quality (`-q:v 2`) rather than FFmpeg's bitrate-based default
+* start/end timestamps are now passed to FFmpeg as input seeks rather than output seeks; this should provide a significant speedup for deep starting times as leading video decoding is skipped
 
 ### Fixed
 * Temporary frame directory should be cleaned up if pipeline exits unexpectedly

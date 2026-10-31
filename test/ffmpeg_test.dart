@@ -43,7 +43,7 @@ void main() {
       expect(args[logIdx + 1], equals('error'));
     });
 
-    test('Output args are placed after the input', () {
+    test('Seek args are placed before the input & output args after it', () {
       final cmd = buildCommand(
         source: 'in.mp4',
         outDir: 'out',
@@ -54,9 +54,17 @@ void main() {
       final args = cmd.toCli().args;
 
       final inputIdx = args.indexOf('in.mp4');
-      expect(args.indexOf('-ss'), greaterThan(inputIdx));
-      expect(args.indexOf('-to'), greaterThan(inputIdx));
+      expect(args[inputIdx - 1], equals('-i'));
+      expect(args.sublist(0, inputIdx - 1), equals(['-ss', '5', '-to', '10']));
       expect(args.indexOf('-q:v'), greaterThan(inputIdx));
+    });
+
+    test('Seek args are omitted when not specified', () {
+      final args = buildCommand(source: 'in.mp4', outDir: 'out').toCli().args;
+
+      expect(args, isNot(contains('-ss')));
+      expect(args, isNot(contains('-to')));
+      expect(args.take(2), equals(['-i', 'in.mp4']));
     });
   });
 

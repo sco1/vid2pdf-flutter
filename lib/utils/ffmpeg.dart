@@ -203,14 +203,23 @@ FfmpegCommand buildCommand({
 }) {
   final cmd = FfmpegCommand.simple(
     ffmpegPath: ffmpegPath,
-    inputs: [FfmpegInput.asset(source)],
+    inputs: [
+      // Seek as input options so FFmpeg jumps to the nearest keyframe rather than decoding & then
+      // discarding everything before the start time.
+      // Both must be input options so the end time is measured against the source's timeline;
+      // output timestamps are reset by input seeking.
+      FfmpegInput([
+        if (start != null) ...['-ss', start],
+        if (end != null) ...['-to', end],
+        '-i',
+        source,
+      ]),
+    ],
     args: [
       CliArg(name: 'hide_banner'),
       // Keep stderr to actual errors so failure details aren't buried in progress output
       CliArg.logLevel(LogLevel.error),
       CliArg(name: 'nostdin'), // Don't listen for keypresses on stdin
-      if (start != null) CliArg(name: 'ss', value: start),
-      if (end != null) CliArg(name: 'to', value: end),
       ...frameFormat.ffmpegArgs,
     ],
     outputFilepath: baseContext.join(outDir, 'frame%05d${frameFormat.extension}'),
