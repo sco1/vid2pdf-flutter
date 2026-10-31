@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:ffmpeg_cli/ffmpeg_cli.dart';
 
 import 'package:vid2pdf/main.dart';
+import 'package:vid2pdf/utils/find_executable.dart';
 
 class FfmpegNotFoundException implements Exception {
   String msg;
@@ -87,39 +88,96 @@ For example, to specify 1 minute & 5 seconds, you can use 01:05.5 or 65.5'''),
   ],
 );
 
-/// Resolve the location of the FFmpeg binary relative to the provided base directory.
+/// Maximum number of directory levels below a user-selected directory that are searched for FFmpeg
+const int ffmpegSearchDepth = 2;
+
+/// Overrides the operating system used to determine FFmpeg's executable name, for testing only.
 ///
-/// If [baseDir] is `'ffmpeg'`, it is returned as-is so the system PATH is used.
-/// Otherwise, the FFmpeg binary location is assumed to be in a fixed location per operating system,
-/// e.g. for Windows the binary is located at `baseDir/bin/ffmpeg.exe`.
-String resolveFfmpeg(String baseDir) {
-  if (baseDir == 'ffmpeg') {
-    return baseDir;
+/// Uses the same values as [Platform.operatingSystem], e.g. `'windows'`; `null` uses the real OS.
+@visibleForTesting
+String? debugOperatingSystemOverride;
+
+/// Resolve the FFmpeg executable from a user-provided [location].
+///
+/// [location] may be any of the following, checked in order:
+///   1. `'ffmpeg'` (case-insensitive), to be resolved via the system PATH
+///   2. A path to an existing file (e.g. `'some/dir/ffmpeg.exe'`)
+///   3. A directory containing `ffmpeg[.exe]` at most [ffmpegSearchDepth] levels below it, e.g.
+///      `dir/ffmpeg.exe`, `dir/bin/ffmpeg.exe`, or `dir/ffmpeg-8.0/bin/ffmpeg.exe`. If there are
+///      multiple matches, the shallowest is used.
+///
+/// Throws [FfmpegNotFoundException] if [location] is empty or doesn't exist, or is a directory
+/// without an FFmpeg executable within the search depth.
+Future<String> resolveFfmpeg(String location) async {
+  if (location.isEmpty) {
+    throw FfmpegNotFoundException('No FFmpeg location specified');
   }
 
-  switch (Platform.operatingSystem) {
-    case 'windows':
-      return baseContext.join(baseDir, 'bin', 'ffmpeg.exe');
-    case 'macos':
-    case 'linux':
-      return baseContext.join(baseDir, 'bin', 'ffmpeg');
-    default:
-      throw UnimplementedError('Unsupported platform.');
+  if (location.toLowerCase() == 'ffmpeg') {
+    return location;
   }
+
+  if (await File(location).exists()) {
+    return location;
+  }
+
+  final String os = debugOperatingSystemOverride ?? Platform.operatingSystem;
+  final String exeName = switch (os) {
+    'windows' => 'ffmpeg.exe',
+    'linux' || 'macos' => 'ffmpeg',
+    _ => throw UnimplementedError("Unsupported platform: '$os'"),
+  };
+
+  final dir = Directory(location);
+  if (!(await dir.exists())) {
+    throw FfmpegNotFoundException("'$location' does not exist");
+  }
+
+  final String? found = await findExecutable(dir, exeName, maxDepth: ffmpegSearchDepth);
+  if (found == null) {
+    throw FfmpegNotFoundException(
+      "No '$exeName' found within $ffmpegSearchDepth levels below '$location'",
+    );
+  }
+
+  return found;
 }
 
-/// Verify that the FFmpeg binary at [ffmpegPath] (or on system PATH) can be executed.
+/// A resolved & verified FFmpeg executable.
+class FfmpegInfo {
+  /// Path to the executable, or `'ffmpeg'` if it's resolved via the system PATH.
+  final String path;
+
+  /// Version string as reported by `ffmpeg -version`
+  final String version;
+
+  const FfmpegInfo(this.path, this.version);
+}
+
+/// Resolve [location] to an FFmpeg executable (see [resolveFfmpeg]) & verify that it can be run.
 ///
-/// Throws [FfmpegNotFoundException] if the binary cannot be found or fails to run.
-Future<void> checkFfmpegAvailable(String ffmpegPath) async {
+/// Throws [FfmpegNotFoundException] with a user-facing message if FFmpeg can't be found or run.
+Future<FfmpegInfo> locateFfmpeg(String location) async {
+  final String path = await resolveFfmpeg(location);
+
+  final ProcessResult result;
   try {
-    final result = await Process.run(ffmpegPath, ['-version']);
-    if (result.exitCode != 0) {
-      throw FfmpegNotFoundException("FFmpeg executable failed check: '$ffmpegPath'");
-    }
+    result = await Process.run(path, ['-version']);
   } on ProcessException {
-    throw FfmpegNotFoundException("FFmpeg executable does not exist: '$ffmpegPath'");
+    throw FfmpegNotFoundException("FFmpeg could not be run: '$path'");
   }
+
+  if (result.exitCode != 0) {
+    throw FfmpegNotFoundException("FFmpeg failed its version check: '$path'");
+  }
+
+  // First line should contain the version string
+  // e.g. "ffmpeg version 9.0.1-full_build-www.gyan.dev Copyright (c) 2000-2026 ..."
+  final String firstLine = LineSplitter.split(result.stdout as String).firstOrNull ?? '';
+  final String version =
+      RegExp(r'^ffmpeg version (\S+)').firstMatch(firstLine)?.group(1) ?? 'unknown version';
+
+  return FfmpegInfo(path, version);
 }
 
 /// Build a [FfmpegCommand] that can be invoked for frame extraction.
@@ -234,7 +292,13 @@ class FfmpegManager {
   Future<int> runCmd(FfmpegCommand cmd, {bool verbose = false}) async {
     log('Executing FFmpeg command: ${cmd.toCli()}');
     lastStderr = '';
-    _process = await Ffmpeg().run(cmd);
+
+    // FFmpeg should be verified before the pipeline can run, but guard just in case
+    try {
+      _process = await Ffmpeg().run(cmd);
+    } on ProcessException {
+      throw FfmpegNotFoundException("FFmpeg could not be started: '${cmd.ffmpegPath ?? 'ffmpeg'}'");
+    }
 
     // Cancellation may have been requested while the process was starting
     if (sigterm) {

@@ -11,6 +11,10 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`<ma
 * Pipeline now aborts if FFmpeg executable isn't found or exits with a non-zero status
 * Temporary frames are now extracted to the system temp directory rather than next to the source video
 * Disable macOS App Sandbox entitlement to allow invoking host FFmpeg and writing output PDFs
+* PDF generation is now disabled until a valid FFmpeg executable has been resolved
+* FFmpeg specification now additionally accepts a path to the executable, or a directory containing it up to two levels deep (e.g. `<dir>/ffmpeg.exe`, `<dir>/bin/ffmpeg.exe`)
+* Default frame format has been switched from PNG to JPEG
+* JPEG frames are now explicitly extracted at high quality (`-q:v 2`) rather than FFmpeg's bitrate-based default
 
 ### Fixed
 * Temporary frame directory should be cleaned up if pipeline exits unexpectedly

@@ -30,7 +30,7 @@ With Flutter installed, obtain the source code by cloning this repository or dow
 
 ## Usage
 ### FFmpeg Path
-By default, `vid2pdf` assumes that FFmpeg is available in your system path. If this isn't an option, or you want to specify an alternate location, you can do so using the `FFMPEG_PATH` environment variable to specify FFmpeg's base directory (not the `/bin` directory).
+By default, `vid2pdf` assumes that FFmpeg is available in your system path. If this isn't an option, or you want to specify an alternate location, you can do so using the `FFMPEG_PATH` environment variable to specify FFmpeg's executable location.
 
 Environment variable priority is as follows:
 
@@ -40,6 +40,14 @@ Environment variable priority is as follows:
     - If running an OS-specific distribution, this is included as an asset in `data/flutter_assets`
 
 The specified path will now automatically be filled on app launch. If you don't want to deal with any of this, you can browse for the base directory in the UI or just type it in.
+
+Both Env var and UI supplied paths are resolved to a valid executable according to the following:
+
+1. Resolved via the system PATH (i.e. `ffmpeg`)
+2. Path to existing executable file (e.g. `some/dir/ffmpeg`)
+3. A directory containing the ffpeg executable at most 2 levels below it (e.g. `dir/ffmpeg` or `dir/foo/bin/ffmpeg`)
+
+**NOTE:** The PDF generation pipeline is blocked until a valid FFmpeg executable can be resolved.
 
 ### Source Video
 The source video can be dragged & dropped into the UI element, or the element can be clicked on to open a picker prompt. Multi-file selection currently not allowed.
