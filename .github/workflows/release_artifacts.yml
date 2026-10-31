@@ -2,6 +2,11 @@ name: Build Release Artifacts
 
 on:
   workflow_dispatch:
+    inputs:
+      release-tag:
+        description: "Existing release tag to build & upload to (blank for a test build only)"
+        required: false
+        default: ""
   release:
     types: [published]
 
@@ -38,13 +43,15 @@ jobs:
             artifact-target: vid2pdf.app
 
     env:
-      # Manual runs have no release tag, so fall back to the commit SHA
-      BUNDLE_BASE_NAME: vid2pdf-${{ github.event.release.tag_name || github.sha }}-${{ matrix.platform }}
+      # Manual runs have no release tag unless one is provided, so fall back to the commit SHA
+      BUNDLE_BASE_NAME: vid2pdf-${{ github.event.release.tag_name || inputs.release-tag || github.sha }}-${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+          # Build the tagged source when re-publishing; blank uses the triggering ref as usual
+          ref: ${{ inputs.release-tag }}
 
       - name: Install Flutter
         uses: subosito/flutter-action@v2.23.0
@@ -98,7 +105,12 @@ jobs:
               (cd "${ARTIFACT_DIR}" && 7z a -tzip "${GITHUB_WORKSPACE}/${ARCHIVE}" "${ARTIFACT_TARGET}")
               ;;
           esac
-          HASH=$(shasum -a 256 "${ARCHIVE}")
+          # Windows' Git Bash ships sha256sum but not shasum, while macOS has only shasum
+          if command -v sha256sum > /dev/null; then
+            HASH=$(sha256sum "${ARCHIVE}")
+          else
+            HASH=$(shasum -a 256 "${ARCHIVE}")
+          fi
           echo "DIGEST=${HASH}"
           echo "archive=${ARCHIVE}" >> "${GITHUB_OUTPUT}"
 
@@ -120,7 +132,7 @@ jobs:
 
   publish-release-artifacts:
     name: Upload Artifacts to Release
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || inputs.release-tag != ''
     needs: build-os-artifacts
     runs-on: ubuntu-latest
     permissions:
@@ -140,7 +152,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          TAG_NAME: ${{ github.event.release.tag_name }}
+          TAG_NAME: ${{ github.event.release.tag_name || inputs.release-tag }}
         run: |
           ls -l dist
           gh release upload "${TAG_NAME}" dist/*
