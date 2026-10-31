@@ -1,43 +1,16 @@
 import 'dart:developer';
-import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:window_manager/window_manager.dart';
 
-import 'package:vid2pdf/main.dart';
 import 'package:vid2pdf/utils/ffmpeg.dart';
 import 'package:vid2pdf/utils/filter_files.dart';
-import 'package:vid2pdf/utils/make_pdf.dart';
+import 'package:vid2pdf/utils/pipeline.dart';
 import 'package:vid2pdf/widgets/drop_target.dart';
+import 'package:vid2pdf/widgets/ffmpeg_location_field.dart';
 import 'package:vid2pdf/widgets/simple_alert.dart';
-
-/// Attempt to locate FFmpeg's base directory as defined by an environment variable.
-///
-/// Preference is given to the system's environment variable. If not defined by the system, or it is
-/// defined as an empty string, a fallback attempt will be made to a `.env` file, as loaded by
-/// `flutter_dotenv`.
-///
-/// If neither approach yields a value, an empty string is returned.
-String _ffmpegPathFromEnv({String varName = 'FFMPEG_PATH'}) {
-  String tryEnv = String.fromEnvironment(varName);
-  if (tryEnv.isNotEmpty) {
-    return tryEnv;
-  }
-
-  try {
-    String? tryDotenv = dotenv.maybeGet(varName, fallback: null);
-    if (tryDotenv != null) {
-      return tryDotenv;
-    }
-  } on NotInitializedError {
-    log('DotEnv not initialized, defaulting to empty value');
-    return '';
-  }
-
-  return '';
-}
 
 class MainUI extends StatefulWidget {
   const MainUI({super.key});
@@ -46,53 +19,27 @@ class MainUI extends StatefulWidget {
   State<MainUI> createState() => _MainUIState();
 }
 
-class _MainUIState extends State<MainUI> {
+class _MainUIState extends State<MainUI> with WindowListener {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _ffmpegPathController = TextEditingController();
   final TextEditingController _startTimeController = TextEditingController();
   final TextEditingController _endTimeController = TextEditingController();
 
+  /// Verified FFmpeg executable, `null` if the entered location hasn't been verified.
+  FfmpegInfo? _ffmpeg;
+
   String? _sourcePath;
 
-  FrameFormat _selectedFrameFormat = FrameFormat.png;
+  FrameFormat _selectedFrameFormat = FrameFormat.jpeg;
 
+  final PdfPipeline _pipeline = PdfPipeline();
   Future<bool>? _pipelineResult;
-  Directory? _frameDir;
   bool _isPipelineRunning = false;
-
-  Future<bool> _pdfPipeline({
-    required String ffmpegPath,
-    required String sourcePath,
-    required String startTime,
-    required String endTime,
-  }) async {
-    final File ffmpegBin = File(ffmpegPath);
-    if (!await ffmpegBin.exists()) {
-      throw FfmpegNotFoundException("FFmpeg executable does not exist: '$ffmpegPath'");
-    }
-
-    _frameDir = await Directory(sourcePath).parent.createTemp('_frames');
-    await _frameDir!.create();
-    final String framePath = baseContext.canonicalize(_frameDir!.path);
-
-    await extractFrames(
-      ffmpegPath: ffmpegPath,
-      source: sourcePath,
-      outDir: framePath,
-      start: (startTime.isEmpty) ? null : startTime,
-      end: (endTime.isEmpty) ? null : endTime,
-      frameFormat: _selectedFrameFormat,
-    );
-
-    final pdfOutPath = baseContext.setExtension(sourcePath, '.pdf');
-    await frames2pdf(framePath, pdfOutPath, frameFormat: _selectedFrameFormat);
-
-    await _frameDir!.delete(recursive: true);
-    return true;
-  }
+  late final AppLifecycleListener _appLifecycleListener;
 
   void _runPipeline() {
-    if (!_formKey.currentState!.validate()) {
+    // Generate should only be enabled once FFmpeg has been found, but guard just in case
+    final FfmpegInfo? ffmpeg = _ffmpeg;
+    if (!_formKey.currentState!.validate() || ffmpeg == null) {
       return;
     }
 
@@ -101,30 +48,19 @@ class _MainUIState extends State<MainUI> {
       _isPipelineRunning = true;
     });
 
-    _pipelineResult =
-        _pdfPipeline(
-              ffmpegPath: resolveFfmpeg(_ffmpegPathController.text),
-              sourcePath: _sourcePath!,
-              startTime: _startTimeController.text,
-              endTime: _endTimeController.text,
-            )
-            .then((r) {
-              setState(() {
-                _isPipelineRunning = false;
-              });
-              return r;
-            })
-            .catchError((e) async {
-              // Clean up frame directory if it's still lingering
-              if (_frameDir != null && await _frameDir!.exists()) {
-                _frameDir!.delete(recursive: true);
-              }
-
-              setState(() {
-                _isPipelineRunning = false;
-              });
-              throw e;
-            });
+    _pipelineResult = _pipeline
+        .run(
+          ffmpegPath: ffmpeg.path,
+          sourcePath: _sourcePath!,
+          startTime: _startTimeController.text,
+          endTime: _endTimeController.text,
+          frameFormat: _selectedFrameFormat,
+        )
+        .whenComplete(() {
+          setState(() {
+            _isPipelineRunning = false;
+          });
+        });
   }
 
   void _onFileDrop(String newFilePath) {
@@ -136,9 +72,42 @@ class _MainUIState extends State<MainUI> {
   @override
   void initState() {
     super.initState();
+    windowManager.addListener(this);
 
-    final String ffmpegEnv = _ffmpegPathFromEnv();
-    _ffmpegPathController.text = (ffmpegEnv.isEmpty) ? 'ffmpeg' : ffmpegEnv;
+    // Intercept window close so any running FFmpeg process can be shut down first by onWindowClose
+    windowManager.setPreventClose(true);
+
+    // App-level quit requests bypass window close, so handle them separately
+    _appLifecycleListener = AppLifecycleListener(onExitRequested: _onExitRequested);
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    _appLifecycleListener.dispose();
+    _startTimeController.dispose();
+    _endTimeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Future<void> onWindowClose() async {
+    try {
+      await _pipeline.shutdown();
+    } finally {
+      // Since we've intercepted window close, destroy must always be reached or the window sticks
+      await windowManager.destroy();
+    }
+  }
+
+  Future<AppExitResponse> _onExitRequested() async {
+    try {
+      await _pipeline.shutdown();
+    } catch (e) {
+      // Never block the exit, even if cleanup fails
+      log('Shutdown failed during exit request: $e');
+    }
+    return AppExitResponse.exit;
   }
 
   @override
@@ -152,41 +121,20 @@ class _MainUIState extends State<MainUI> {
           child: Column(
             spacing: 12,
             children: [
-              Row(
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      String? d = await FilePicker.platform.getDirectoryPath(
-                        dialogTitle: 'Select Base FFmpeg Directory',
-                      );
-
-                      if (d != null) {
-                        _ffmpegPathController.text = d;
-                      }
-                    },
-                    child: Text('Locate ffmpeg'),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _ffmpegPathController,
-                      decoration: InputDecoration(
-                        labelText: "FFmpeg Base Dir (use 'ffmpeg' if in path)",
-                      ),
-                      validator: (val) {
-                        if (val == null || val.isEmpty) {
-                          return 'Enter value.';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
+              FfmpegLocationField(
+                enabled: !_isPipelineRunning,
+                onChanged: (FfmpegInfo? ffmpeg) => setState(() {
+                  _ffmpeg = ffmpeg;
+                }),
               ),
               Row(
                 children: [
                   Expanded(
-                    child: SingleFileDropTarget(onFileDrop: _onFileDrop, fileFilter: isVideo),
+                    child: SingleFileDropTarget(
+                      onFileDrop: _onFileDrop,
+                      fileFilter: isVideo,
+                      enabled: !_isPipelineRunning,
+                    ),
                   ),
                 ],
               ),
@@ -195,6 +143,7 @@ class _MainUIState extends State<MainUI> {
                   Expanded(
                     child: TextFormField(
                       controller: _startTimeController,
+                      enabled: !_isPipelineRunning,
                       decoration: InputDecoration(labelText: 'Start (blank for start)'),
                     ),
                   ),
@@ -202,6 +151,7 @@ class _MainUIState extends State<MainUI> {
                   Expanded(
                     child: TextFormField(
                       controller: _endTimeController,
+                      enabled: !_isPipelineRunning,
                       decoration: InputDecoration(labelText: 'End (blank for end)'),
                     ),
                   ),
@@ -226,7 +176,16 @@ class _MainUIState extends State<MainUI> {
                           future: _pipelineResult,
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) {
-                              return CircularProgressIndicator();
+                              return Row(
+                                spacing: 24,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  ElevatedButton(
+                                    onPressed: _pipeline.cancel,
+                                    child: Text('Cancel'),
+                                  ),
+                                ],
+                              );
                             } else if (snapshot.hasError) {
                               return GestureDetector(
                                 onTap: () {
@@ -238,7 +197,10 @@ class _MainUIState extends State<MainUI> {
                                 child: Text('Conversion Failed. Click for more details.'),
                               );
                             } else {
-                              return Text('Conversion complete');
+                              final String msg = (snapshot.data ?? false)
+                                  ? 'Conversion complete'
+                                  : 'Pipeline terminated by user';
+                              return Text(msg);
                             }
                           },
                         ),
@@ -248,7 +210,8 @@ class _MainUIState extends State<MainUI> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   DropdownMenu(
-                    initialSelection: FrameFormat.png,
+                    initialSelection: FrameFormat.jpeg,
+                    enabled: !_isPipelineRunning,
                     dropdownMenuEntries: FrameFormat.asMenuEntries,
                     label: Text('Frame Type'),
                     onSelected: (FrameFormat? fmt) {
@@ -261,7 +224,9 @@ class _MainUIState extends State<MainUI> {
                   ),
                   SizedBox(width: 24),
                   ElevatedButton(
-                    onPressed: (_isPipelineRunning || _sourcePath == null) ? null : _runPipeline,
+                    onPressed: (_isPipelineRunning || _sourcePath == null || _ffmpeg == null)
+                        ? null
+                        : _runPipeline,
                     child: Text('Generate PDF'),
                   ),
                 ],
