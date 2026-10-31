@@ -9,10 +9,10 @@ permissions: {}
 
 jobs:
   build-os-artifacts:
-    name: Build & Upload Release Artifacts
+    name: Build Release Artifacts
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: read
     defaults:
       run:
         shell: bash
@@ -51,7 +51,7 @@ jobs:
         id: flutter-action
         with:
           channel: stable
-          cache: true
+          cache: false
 
       - name: Print Flutter Info
         env:
@@ -102,8 +102,7 @@ jobs:
           echo "DIGEST=${HASH}"
           echo "archive=${ARCHIVE}" >> "${GITHUB_OUTPUT}"
 
-      - name: Upload Artifact on Manual Trigger (${{ matrix.os }})
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload Artifact (${{ matrix.os }})
         uses: actions/upload-artifact@v7.0.1
         id: upload-artifact
         with:
@@ -112,7 +111,6 @@ jobs:
           path: ${{ steps.archive.outputs.archive }}
 
       - name: Print Artifact Info
-        if: github.event_name == 'workflow_dispatch'
         env:
           URL: ${{ steps.upload-artifact.outputs.artifact-url }}
           DIGEST: ${{ steps.upload-artifact.outputs.artifact-digest }}
@@ -120,10 +118,29 @@ jobs:
           echo "URL=${URL}"
           echo "DIGEST=${DIGEST}"
 
-      - name: Upload Artifact to Release (${{ matrix.os }})
-        if: github.event_name == 'release'
+  publish-release-artifacts:
+    name: Upload Artifacts to Release
+    if: github.event_name == 'release'
+    needs: build-os-artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v8.0.2
+        with:
+          path: dist
+          pattern: vid2pdf-*
+          merge-multiple: true
+          # Archives were uploaded as-is, so keep the .zip files intact rather than extracting them
+          skip-decompress: true
+
+      - name: Upload Artifacts to Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.event.release.tag_name }}
-          ARCHIVE: ${{ steps.archive.outputs.archive }}
-        run: gh release upload "${TAG_NAME}" "${ARCHIVE}"
+        run: |
+          ls -l dist
+          gh release upload "${TAG_NAME}" dist/*

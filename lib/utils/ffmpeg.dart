@@ -305,23 +305,31 @@ class FfmpegManager {
       _process!.kill();
     }
 
+    // Output isn't guaranteed to be valid UTF-8, so replace bad bytes rather than throwing &
+    // masking the actual FFmpeg error
+    const decoder = Utf8Decoder(allowMalformed: true);
     final stderrBuffer = StringBuffer();
-    final stdoutFuture = verbose
-        ? _process!.stdout
-              .transform(utf8.decoder)
-              .forEach(print) // ignore: avoid_print
-        : _process!.stdout.drain<void>();
-    final stderrFuture = _process!.stderr.transform(utf8.decoder).forEach((chunk) {
-      stderrBuffer.write(chunk);
-      if (verbose) {
-        print(chunk); // ignore: avoid_print
-      }
-    });
+    final int exitCode;
+    try {
+      final stdoutFuture = verbose
+          ? _process!.stdout
+                .transform(decoder)
+                .forEach(print) // ignore: avoid_print
+          : _process!.stdout.drain<void>();
+      final stderrFuture = _process!.stderr.transform(decoder).forEach((chunk) {
+        stderrBuffer.write(chunk);
+        if (verbose) {
+          print(chunk); // ignore: avoid_print
+        }
+      });
 
-    final exitCode = await _process!.exitCode;
-    await Future.wait([stdoutFuture, stderrFuture]);
-    _process = null;
-    lastStderr = stderrBuffer.toString();
+      exitCode = await _process!.exitCode;
+      await Future.wait([stdoutFuture, stderrFuture]);
+    } finally {
+      // Make sure we clear the process even if our decoding fails
+      _process = null;
+      lastStderr = stderrBuffer.toString();
+    }
 
     if (exitCode != 0) {
       if (!sigterm) {
