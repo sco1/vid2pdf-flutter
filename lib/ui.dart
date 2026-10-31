@@ -130,7 +130,11 @@ class _MainUIState extends State<MainUI> with WindowListener {
               Row(
                 children: [
                   Expanded(
-                    child: SingleFileDropTarget(onFileDrop: _onFileDrop, fileFilter: isVideo),
+                    child: SingleFileDropTarget(
+                      onFileDrop: _onFileDrop,
+                      fileFilter: isVideo,
+                      enabled: !_isPipelineRunning,
+                    ),
                   ),
                 ],
               ),
@@ -139,6 +143,7 @@ class _MainUIState extends State<MainUI> with WindowListener {
                   Expanded(
                     child: TextFormField(
                       controller: _startTimeController,
+                      enabled: !_isPipelineRunning,
                       decoration: InputDecoration(labelText: 'Start (blank for start)'),
                     ),
                   ),
@@ -146,6 +151,7 @@ class _MainUIState extends State<MainUI> with WindowListener {
                   Expanded(
                     child: TextFormField(
                       controller: _endTimeController,
+                      enabled: !_isPipelineRunning,
                       decoration: InputDecoration(labelText: 'End (blank for end)'),
                     ),
                   ),

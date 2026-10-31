@@ -20,6 +20,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (`<ma
 * Temporary frame directory should be cleaned up if pipeline exits unexpectedly
 * Fix FFmpeg resolution when using `ffmpeg` from system `PATH` or reading `FFMPEG_PATH` from system environment variables
 * Fix click-to-browse selection in drop target not enabling the conversion button or validating file type
+* All UI controls (besides the cancel button) are now disabled while the conversion pipeline is running
 
 ## [v0.1.0]
 Initial release 🎉

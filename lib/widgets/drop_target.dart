@@ -7,10 +7,13 @@ import 'package:vid2pdf/main.dart';
 import 'package:vid2pdf/widgets/simple_alert.dart';
 
 class SingleFileDropTarget extends StatefulWidget {
-  const SingleFileDropTarget({super.key, this.onFileDrop, this.fileFilter});
+  const SingleFileDropTarget({super.key, this.onFileDrop, this.fileFilter, this.enabled = true});
 
   final void Function(String)? onFileDrop;
   final bool Function(String)? fileFilter;
+
+  /// If `false`, drops & clicks are ignored, e.g. so the source can't change mid-conversion.
+  final bool enabled;
 
   @override
   State<SingleFileDropTarget> createState() => _SingleFileDropTargetState();
@@ -37,9 +40,23 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
     widget.onFileDrop?.call(filePath);
   }
 
+  Future<void> _browse() async {
+    final PlatformFile? result = await FilePicker.pickFile(
+      dialogTitle: 'Select Source Video',
+      type: FileType.video,
+    );
+
+    if (!mounted || result?.path == null) {
+      return;
+    }
+
+    _acceptFile(result!.path!);
+  }
+
   @override
   Widget build(BuildContext context) {
     return DropTarget(
+      enable: widget.enabled,
       onDragEntered: (d) {
         setState(() {
           _borderColor = Colors.green;
@@ -67,23 +84,12 @@ class _SingleFileDropTargetState extends State<SingleFileDropTarget> {
         _acceptFile(d.files.single.path);
       },
       child: GestureDetector(
-        onTap: () async {
-          final PlatformFile? result = await FilePicker.pickFile(
-            dialogTitle: 'Select Source Video',
-            type: FileType.video,
-          );
-
-          if (!mounted || result?.path == null) {
-            return;
-          }
-
-          _acceptFile(result!.path!);
-        },
+        onTap: widget.enabled ? _browse : null,
         child: Container(
           height: 150,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            border: BoxBorder.all(color: _borderColor, width: 4),
+            border: BoxBorder.all(color: widget.enabled ? _borderColor : Colors.grey, width: 4),
           ),
           child: Center(
             child: Text(

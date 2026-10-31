@@ -63,4 +63,4 @@ For example, to specify `1` minute & `5` seconds, you can use `01:05.5` or `65.5
 To use the video's start and/or end times, their respective fields can be left blank.
 
 ### Frame Type
-By default, frames are extracted to PNG to avoid compression losses during PDF generation, however this comes at the expense of runtime & a potentially large PDF filesize. For use cases where it's not critical to maintain image fidelity, you can try using JPEG instead.
+By default, frames are extracted to JPEG; while a high quality setting is utilized, this is still a lossy format and may generate compression artifacts in the compiled PDF. PNG frames are available as an alternative option, which retains the original video quality at the cost of increased size and processing time.
